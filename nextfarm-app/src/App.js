@@ -638,6 +638,285 @@ function ModuloProducao() {
   );
 }
 
+// ─── MÓDULO CALCULADORA ──────────────────────────────────────────
+const SYSTEM_PROMPT = `Você é uma calculadora de precificação para produtos de impressão 3D.
+Seu trabalho é ajudar o usuário a descobrir o preço ideal de venda.
+
+1. Peça as informações abaixo (uma de cada vez, de forma simpática):
+- Nome do produto
+- Peso do filamento em gramas (ver no fatiador — Bambu Studio, Cura etc.)
+- Tempo de impressão em horas (ex: 5h34min = 5.57h)
+- Custo do filamento por kg em dólares (ex: $22.00)
+- Custo de energia por hora (ex: $0.15 — se não souber, use $0.15)
+- Custo da embalagem (ex: $1.00)
+- Minutos gastos no acabamento (lixar, limpar, montar)
+- Quanto quer ganhar por hora pelo seu tempo (ex: $20.00)
+- Plataforma de venda: Instagram (0%), TikTok Shop (8%) ou Etsy (6.5%)
+- Frete: cobrado à parte ou incluso no preço?
+
+2. Depois de receber tudo, calcule:
+- Custo do filamento = (peso ÷ 1000) × preço por kg
+- Custo de energia = tempo de impressão × custo por hora
+- Custo de acabamento = (minutos ÷ 60) × valor hora
+- Custo total = filamento + energia + embalagem + acabamento
+- Preço com 40% de margem = custo total ÷ 0.60
+- Preço com 60% de margem = custo total ÷ 0.40
+- Se tiver taxa de plataforma, divida o preço por (1 - taxa)
+
+3. Mostre o resultado assim:
+- Custo total de produção: $X
+- Preço sugerido com 40% de margem: $X
+- Preço sugerido com 60% de margem: $X ← recomendado
+- Lucro líquido por unidade (60%): $X
+- Explique qual margem faz mais sentido para o produto e plataforma
+- Sugira uma frase curta em inglês para a descrição do produto
+
+Regras: seja simpático e direto · use valores padrão se não souber ($22/kg · $0.15/hr · $1.00 embalagem) · recomende sempre 60% de margem. Responda em português.`;
+
+function ModuloCalculadora() {
+  const [msgs, setMsgs] = useState([
+    { role: "assistant", content: "Olá! 👋 Sou sua calculadora de precificação para impressão 3D. Vou te ajudar a encontrar o preço ideal de venda.\n\nPara começar, qual é o **nome do produto** que você quer precificar?" }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useState(null);
+
+  const enviar = async () => {
+    if (!input.trim() || loading) return;
+    const novaMsg = { role: "user", content: input };
+    const novasMsgs = [...msgs, novaMsg];
+    setMsgs(novasMsgs);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: novasMsgs.map(m => ({ role: m.role, content: m.content }))
+        })
+      });
+      const data = await res.json();
+      const resposta = data.content?.[0]?.text || "Desculpe, tente novamente.";
+      setMsgs([...novasMsgs, { role: "assistant", content: resposta }]);
+    } catch {
+      setMsgs([...novasMsgs, { role: "assistant", content: "Erro de conexão. Tente novamente." }]);
+    }
+    setLoading(false);
+  };
+
+  const limpar = () => setMsgs([{ role: "assistant", content: "Olá! 👋 Sou sua calculadora de precificação para impressão 3D. Vou te ajudar a encontrar o preço ideal de venda.\n\nPara começar, qual é o **nome do produto** que você quer precificar?" }]);
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", margin: 0 }}>🧮 Calculadora de Precificação</h2>
+          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>IA especialista em impressão 3D</p>
+        </div>
+        <button onClick={limpar} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 13, color: "#64748b", cursor: "pointer", fontWeight: 600 }}>🔄 Nova consulta</button>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        {/* Mensagens */}
+        <div style={{ height: 460, overflowY: "auto", padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+          {msgs.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+              {m.role === "assistant" && (
+                <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, marginRight: 10, flexShrink: 0, marginTop: 2 }}>🌱</div>
+              )}
+              <div style={{
+                maxWidth: "75%",
+                background: m.role === "user" ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#f8fafc",
+                color: m.role === "user" ? "#fff" : "#1e293b",
+                padding: "12px 16px",
+                borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                fontSize: 14,
+                lineHeight: 1.6,
+                border: m.role === "assistant" ? "1px solid #e2e8f0" : "none",
+                whiteSpace: "pre-wrap"
+              }}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🌱</div>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "18px 18px 18px 4px", padding: "12px 16px", display: "flex", gap: 6, alignItems: "center" }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", animation: `bounce 1s ease-in-out ${i * 0.2}s infinite` }} />)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div style={{ borderTop: "1px solid #e2e8f0", padding: "16px 20px", display: "flex", gap: 10 }}>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && enviar()}
+            placeholder="Digite sua resposta..."
+            style={{ flex: 1, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", fontSize: 14, color: "#1e293b", outline: "none" }}
+          />
+          <button onClick={enviar} disabled={loading || !input.trim()}
+            style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", borderRadius: 10, padding: "11px 20px", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: loading || !input.trim() ? 0.6 : 1 }}>
+            Enviar
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }`}</style>
+    </div>
+  );
+}
+
+// ─── MÓDULO CALCULADORA ───────────────────────────────────────────
+const SYSTEM_PROMPT = `Você é uma calculadora de precificação para produtos de impressão 3D da Nextfarm 3D. Seu trabalho é ajudar o usuário a descobrir o preço ideal de venda.
+
+Peça as informações abaixo uma de cada vez, de forma simpática:
+1. Nome do produto
+2. Peso do filamento em gramas (ver no fatiador — Bambu Studio, Cura etc.)
+3. Tempo de impressão em horas (ex: 5h34min = 5.57h)
+4. Custo do filamento por kg (CONSIDERE SEMPRE R$ 140,00 como padrão)
+5. Custo de energia por hora (CONSIDERE SEMPRE R$ 1,50)
+6. Custo da embalagem (CONSIDERE SEMPRE R$ 2,00)
+7. Frete: SEMPRE POR CONTA DO CLIENTE
+
+Depois de receber tudo, calcule:
+- Custo do filamento = (peso × 0,140)
+- Custo de energia = tempo de impressão × custo por hora
+- Custo total = filamento + energia + embalagem
+- Preço com 40% de margem = custo total ÷ 0,60
+- Preço com 60% de margem = custo total ÷ 0,40
+- Preço com 100% de margem = custo total × 2
+
+Mostre o resultado assim:
+📦 Produto: [nome]
+💰 Custo total de produção: R$ X
+📊 Preço sugerido com 40% de margem: R$ X
+⭐ Preço sugerido com 60% de margem: R$ X
+🏆 Preço sugerido com 100% de margem: R$ X ← RECOMENDADO
+💵 Lucro líquido por unidade (100%): R$ X
+
+Explique qual margem faz mais sentido e sugira uma frase curta em inglês para descrição do produto.
+
+Regras: seja simpático e direto • use valores padrão se não informado • recomende sempre 100% de margem • responda sempre em português.`;
+
+function ModuloCalculadora() {
+  const [msgs, setMsgs] = useState([
+    { role: "assistant", content: "Olá! 👋 Sou a calculadora de precificação da Nextfarm 3D.\n\nVou te ajudar a descobrir o preço ideal para seu produto de impressão 3D.\n\nPara começar: **qual é o nome do produto que você quer precificar?**" }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useState(null);
+
+  const enviar = async () => {
+    if (!input.trim() || loading) return;
+    const novaMsg = { role: "user", content: input };
+    const novaLista = [...msgs, novaMsg];
+    setMsgs(novaLista);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: SYSTEM_PROMPT,
+          messages: novaLista.map(m => ({ role: m.role, content: m.content }))
+        })
+      });
+      const data = await res.json();
+      const resposta = data.content?.[0]?.text || "Desculpe, ocorreu um erro. Tente novamente.";
+      setMsgs([...novaLista, { role: "assistant", content: resposta }]);
+    } catch {
+      setMsgs([...novaLista, { role: "assistant", content: "Erro de conexão. Tente novamente." }]);
+    }
+    setLoading(false);
+  };
+
+  const resetar = () => {
+    setMsgs([{ role: "assistant", content: "Olá! 👋 Sou a calculadora de precificação da Nextfarm 3D.\n\nVou te ajudar a descobrir o preço ideal para seu produto de impressão 3D.\n\nPara começar: **qual é o nome do produto que você quer precificar?**" }]);
+  };
+
+  const formatarTexto = (texto) => {
+    return texto.split('\n').map((linha, i) => {
+      const bold = linha.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      return <div key={i} dangerouslySetInnerHTML={{ __html: bold || '&nbsp;' }} style={{ marginBottom: linha === '' ? 4 : 2 }} />;
+    });
+  };
+
+  return (
+    <div style={{ maxWidth: 700, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>🧮 Calculadora de Precificação</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>Calcule o preço ideal dos seus produtos 3D</div>
+        </div>
+        <button onClick={resetar} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, color: "#475569", cursor: "pointer", fontWeight: 600 }}>
+          🔄 Nova consulta
+        </button>
+      </div>
+
+      {/* Chat */}
+      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+        <div style={{ height: 460, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          {msgs.map((m, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
+              {m.role === "assistant" && (
+                <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, marginRight: 10, flexShrink: 0, marginTop: 2 }}>🌱</div>
+              )}
+              <div style={{
+                maxWidth: "80%",
+                background: m.role === "user" ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#f8fafc",
+                color: m.role === "user" ? "#fff" : "#1e293b",
+                padding: "12px 16px",
+                borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                fontSize: 14,
+                lineHeight: 1.6,
+                border: m.role === "assistant" ? "1px solid #e2e8f0" : "none"
+              }}>
+                {formatarTexto(m.content)}
+              </div>
+            </div>
+          ))}
+          {loading && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🌱</div>
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "18px 18px 18px 4px", padding: "12px 16px", display: "flex", gap: 4, alignItems: "center" }}>
+                {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, background: "#22c55e", borderRadius: "50%", animation: `bounce 1s ease-in-out ${i*0.2}s infinite` }} />)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input */}
+        <div style={{ padding: "14px 16px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 10 }}>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && enviar()}
+            placeholder="Digite sua resposta..."
+            style={{ flex: 1, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", fontSize: 14, color: "#1e293b", outline: "none" }}
+          />
+          <button onClick={enviar} disabled={loading || !input.trim()}
+            style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", borderRadius: 10, padding: "11px 20px", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: loading || !input.trim() ? 0.6 : 1 }}>
+            Enviar
+          </button>
+        </div>
+      </div>
+      <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }`}</style>
+    </div>
+  );
+}
+
 // ─── APP PRINCIPAL ────────────────────────────────────────────────
 export default function App() {
   const [logado, setLogado] = useState(null);
@@ -667,6 +946,7 @@ export default function App() {
     { id: "financeiro", label: "Financeiro", icon: "💰", admin: true },
     { id: "estoque", label: "Estoque", icon: "📦", admin: true },
     { id: "producao", label: "Produção", icon: "🏭", admin: true },
+    { id: "calculadora", label: "Calculadora", icon: "🧮" },
   ];
 
   if (!logado) return (
@@ -725,10 +1005,11 @@ export default function App() {
         </div>
       </header>
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 20px" }}>
-        {aba === "pedidos"    && <ModuloPedidos logado={logado} />}
-        {aba === "financeiro" && <ModuloFinanceiro />}
-        {aba === "estoque"    && <ModuloEstoque />}
-        {aba === "producao"   && <ModuloProducao />}
+        {aba === "pedidos"      && <ModuloPedidos logado={logado} />}
+        {aba === "financeiro"   && <ModuloFinanceiro />}
+        {aba === "estoque"      && <ModuloEstoque />}
+        {aba === "producao"     && <ModuloProducao />}
+        {aba === "calculadora"  && <ModuloCalculadora />}
       </main>
     </div>
   );
