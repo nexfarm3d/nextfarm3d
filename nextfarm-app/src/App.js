@@ -639,144 +639,137 @@ function ModuloProducao() {
 }
 
 // ─── MÓDULO CALCULADORA ───────────────────────────────────────────
-const SYSTEM_PROMPT = `Você é uma calculadora de precificação para produtos de impressão 3D da Nextfarm 3D. Seu trabalho é ajudar o usuário a descobrir o preço ideal de venda.
-
-Peça as informações abaixo uma de cada vez, de forma simpática:
-1. Nome do produto
-2. Peso do filamento em gramas (ver no fatiador — Bambu Studio, Cura etc.)
-3. Tempo de impressão em horas (ex: 5h34min = 5.57h)
-4. Custo do filamento por kg (CONSIDERE SEMPRE R$ 140,00 como padrão)
-5. Custo de energia por hora (CONSIDERE SEMPRE R$ 1,50)
-6. Custo da embalagem (CONSIDERE SEMPRE R$ 2,00)
-7. Frete: SEMPRE POR CONTA DO CLIENTE
-
-Depois de receber tudo, calcule:
-- Custo do filamento = (peso × 0,140)
-- Custo de energia = tempo de impressão × custo por hora
-- Custo total = filamento + energia + embalagem
-- Preço com 40% de margem = custo total ÷ 0,60
-- Preço com 60% de margem = custo total ÷ 0,40
-- Preço com 100% de margem = custo total × 2
-
-Mostre o resultado assim:
-📦 Produto: [nome]
-💰 Custo total de produção: R$ X
-📊 Preço sugerido com 40% de margem: R$ X
-⭐ Preço sugerido com 60% de margem: R$ X
-🏆 Preço sugerido com 100% de margem: R$ X ← RECOMENDADO
-💵 Lucro líquido por unidade (100%): R$ X
-
-Explique qual margem faz mais sentido e sugira uma frase curta em inglês para descrição do produto.
-
-Regras: seja simpático e direto • use valores padrão se não informado • recomende sempre 100% de margem • responda sempre em português.`;
+const FILAMENTOS = {
+  PLA:  { fator: 0.140 },
+  PETG: { fator: 0.125 },
+  TPU:  { fator: 0.160 },
+};
+const FATORES_VENDA = { varejo: 3, atacado: 2.2 };
 
 function ModuloCalculadora() {
-  const [msgs, setMsgs] = useState([
-    { role: "assistant", content: "Olá! 👋 Sou a calculadora de precificação da Nextfarm 3D.\n\nVou te ajudar a descobrir o preço ideal para seu produto de impressão 3D.\n\nPara começar: **qual é o nome do produto que você quer precificar?**" }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useState(null);
+  const [form, setForm] = useState({ produto: "", peso: "", filamento: "", venda: "" });
+  const [resultado, setResultado] = useState(null);
+  const [erro, setErro] = useState("");
 
-  const enviar = async () => {
-    if (!input.trim() || loading) return;
-    const novaMsg = { role: "user", content: input };
-    const novaLista = [...msgs, novaMsg];
-    setMsgs(novaLista);
-    setInput("");
-    setLoading(true);
+  const fmtR = (v) => `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          system: SYSTEM_PROMPT,
-          messages: novaLista.map(m => ({ role: m.role, content: m.content }))
-        })
-      });
-      const data = await res.json();
-      const resposta = data.content?.[0]?.text || "Desculpe, ocorreu um erro. Tente novamente.";
-      setMsgs([...novaLista, { role: "assistant", content: resposta }]);
-    } catch {
-      setMsgs([...novaLista, { role: "assistant", content: "Erro de conexão. Tente novamente." }]);
-    }
-    setLoading(false);
+  const calcular = () => {
+    if (!form.produto) { setErro("Preencha o nome do produto."); return; }
+    if (!form.peso || parseFloat(form.peso) <= 0) { setErro("Preencha o peso do produto."); return; }
+    if (!form.filamento) { setErro("Selecione o tipo de filamento."); return; }
+    if (!form.venda) { setErro("Selecione o tipo de venda."); return; }
+    setErro("");
+    const peso = parseFloat(form.peso);
+    const fatorFil = FILAMENTOS[form.filamento].fator;
+    const fatorVenda = FATORES_VENDA[form.venda];
+    const preco = peso * fatorFil * fatorVenda;
+    setResultado({ preco, produto: form.produto, filamento: form.filamento, venda: form.venda, peso });
   };
 
-  const resetar = () => {
-    setMsgs([{ role: "assistant", content: "Olá! 👋 Sou a calculadora de precificação da Nextfarm 3D.\n\nVou te ajudar a descobrir o preço ideal para seu produto de impressão 3D.\n\nPara começar: **qual é o nome do produto que você quer precificar?**" }]);
+  const limpar = () => {
+    setForm({ produto: "", peso: "", filamento: "", venda: "" });
+    setResultado(null);
+    setErro("");
   };
 
-  const formatarTexto = (texto) => {
-    return texto.split('\n').map((linha, i) => {
-      const bold = linha.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      return <div key={i} dangerouslySetInnerHTML={{ __html: bold || '&nbsp;' }} style={{ marginBottom: linha === '' ? 4 : 2 }} />;
-    });
+  const CheckOpt = ({ grupo, valor, label, icon }) => {
+    const ativo = form[grupo] === valor;
+    return (
+      <div onClick={() => setForm({ ...form, [grupo]: valor })}
+        style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderRadius: 10, border: `2px solid ${ativo ? "#22c55e" : "#e2e8f0"}`, background: ativo ? "#F0FDF4" : "#f8fafc", cursor: "pointer", transition: "all 0.15s" }}>
+        <div style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${ativo ? "#22c55e" : "#cbd5e1"}`, background: ativo ? "#22c55e" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          {ativo && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} />}
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: ativo ? "#15803D" : "#334155" }}>{icon} {label}</div>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+    <div style={{ maxWidth: 680, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a" }}>🧮 Calculadora de Precificação</div>
           <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>Calcule o preço ideal dos seus produtos 3D</div>
         </div>
-        <button onClick={resetar} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, color: "#475569", cursor: "pointer", fontWeight: 600 }}>
-          🔄 Nova consulta
+        <button onClick={limpar} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 13, color: "#475569", cursor: "pointer", fontWeight: 600 }}>🔄 Limpar</button>
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: 20, border: "1px solid #e2e8f0", padding: 28, marginBottom: 20 }}>
+
+        {/* Nome do produto */}
+        <div style={{ marginBottom: 22 }}>
+          <label style={{ fontSize: 11, color: "#94a3b8", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 8, fontWeight: 600 }}>Nome do Produto *</label>
+          <input value={form.produto} onChange={e => setForm({ ...form, produto: e.target.value })} placeholder="Ex: Boneco Homem Aranha"
+            style={{ width: "100%", background: "#f8fafc", border: `1px solid ${!form.produto && erro ? "#fca5a5" : "#e2e8f0"}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, color: "#1e293b", outline: "none", boxSizing: "border-box" }} />
+        </div>
+
+        {/* Peso */}
+        <div style={{ marginBottom: 22 }}>
+          <label style={{ fontSize: 11, color: "#94a3b8", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 8, fontWeight: 600 }}>Peso Estimado do Produto (gramas) *</label>
+          <input value={form.peso} onChange={e => setForm({ ...form, peso: e.target.value })} type="number" placeholder="Ex: 85"
+            style={{ width: "100%", background: "#f8fafc", border: `1px solid ${!form.peso && erro ? "#fca5a5" : "#e2e8f0"}`, borderRadius: 12, padding: "13px 16px", fontSize: 15, color: "#1e293b", outline: "none", boxSizing: "border-box" }} />
+          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5 }}>💡 Consulte o peso no Bambu Studio, Cura ou fatiador que usar</div>
+        </div>
+
+        {/* Tipo de filamento */}
+        <div style={{ marginBottom: 22 }}>
+          <label style={{ fontSize: 11, color: "#94a3b8", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 10, fontWeight: 600 }}>Tipo de Filamento *</label>
+          <div style={{ display: "flex", gap: 10 }}>
+            <CheckOpt grupo="filamento" valor="PLA"  label="PLA"  icon="🟢" />
+            <CheckOpt grupo="filamento" valor="PETG" label="PETG" icon="🔵" />
+            <CheckOpt grupo="filamento" valor="TPU"  label="TPU"  icon="🟠" />
+          </div>
+        </div>
+
+        {/* Tipo de venda */}
+        <div style={{ marginBottom: 28 }}>
+          <label style={{ fontSize: 11, color: "#94a3b8", letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 10, fontWeight: 600 }}>Tipo de Venda *</label>
+          <div style={{ display: "flex", gap: 10 }}>
+            <CheckOpt grupo="venda" valor="varejo"  label="Varejo"  icon="🛍️" />
+            <CheckOpt grupo="venda" valor="atacado" label="Atacado" icon="📦" />
+          </div>
+        </div>
+
+        {/* Erro */}
+        {erro && (
+          <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#DC2626", display: "flex", alignItems: "center", gap: 8 }}>
+            ⚠️ {erro}
+          </div>
+        )}
+
+        {/* Botão */}
+        <button onClick={calcular}
+          style={{ width: "100%", background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", borderRadius: 12, padding: 15, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer", letterSpacing: 0.5 }}>
+          Calcular Preço de Venda
         </button>
       </div>
 
-      {/* Chat */}
-      <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
-        <div style={{ height: 460, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          {msgs.map((m, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start" }}>
-              {m.role === "assistant" && (
-                <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, marginRight: 10, flexShrink: 0, marginTop: 2 }}>🌱</div>
-              )}
-              <div style={{
-                maxWidth: "80%",
-                background: m.role === "user" ? "linear-gradient(135deg,#22c55e,#16a34a)" : "#f8fafc",
-                color: m.role === "user" ? "#fff" : "#1e293b",
-                padding: "12px 16px",
-                borderRadius: m.role === "user" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                fontSize: 14,
-                lineHeight: 1.6,
-                border: m.role === "assistant" ? "1px solid #e2e8f0" : "none"
-              }}>
-                {formatarTexto(m.content)}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 32, height: 32, background: "linear-gradient(135deg,#22c55e,#16a34a)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🌱</div>
-              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "18px 18px 18px 4px", padding: "12px 16px", display: "flex", gap: 4, alignItems: "center" }}>
-                {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, background: "#22c55e", borderRadius: "50%", animation: `bounce 1s ease-in-out ${i*0.2}s infinite` }} />)}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Resultado */}
+      {resultado && (
+        <div style={{ background: "linear-gradient(135deg,#0a1628,#0d2137)", borderRadius: 20, padding: 28, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", top: 0, right: 0, width: 200, height: 200, background: "radial-gradient(circle,rgba(34,197,94,0.15) 0%,transparent 70%)" }} />
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Resultado da Simulação</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", marginBottom: 20 }}>{resultado.produto}</div>
 
-        {/* Input */}
-        <div style={{ padding: "14px 16px", borderTop: "1px solid #f1f5f9", display: "flex", gap: 10 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && enviar()}
-            placeholder="Digite sua resposta..."
-            style={{ flex: 1, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "11px 14px", fontSize: 14, color: "#1e293b", outline: "none" }}
-          />
-          <button onClick={enviar} disabled={loading || !input.trim()}
-            style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)", border: "none", borderRadius: 10, padding: "11px 20px", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", opacity: loading || !input.trim() ? 0.6 : 1 }}>
-            Enviar
-          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
+            {[["Peso", resultado.peso + "g"], ["Filamento", resultado.filamento], ["Modalidade", resultado.venda === "varejo" ? "Varejo" : "Atacado"]].map(([l, v]) => (
+              <div key={l} style={{ background: "rgba(255,255,255,0.06)", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 14, padding: "20px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 8 }}>💰 Preço de Venda Sugerido</div>
+            <div style={{ fontSize: 42, fontWeight: 700, color: "#4ade80", letterSpacing: "-1px" }}>{fmtR(resultado.preco)}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 6 }}>🚚 Frete por conta do cliente</div>
+          </div>
         </div>
-      </div>
-      <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }`}</style>
+      )}
     </div>
   );
 }
