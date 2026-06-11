@@ -635,6 +635,353 @@ function ModuloProducao() {
   );
 }
 
+// ─── IMPRESSORAS ─────────────────────────────────────────────────
+function ModuloImpressoras() {
+  const [impressoras,setImpressoras]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [detalhe,setDetalhe]=useState(null);
+  const [editando,setEditando]=useState(false);
+  const [salvando,setSalvando]=useState(false);
+  const vazio={nome:"",modelo:"",fabricante:"",numero_serie:"",data_aquisicao:"",potencia_watts:"",valor_aquisicao:"",vida_util_horas:"",status:"Livre"};
+  const [form,setForm]=useState(vazio);
+  const STATUS_IMP={"Livre":{bg:"#F0FDF4",text:"#15803D",dot:"#22C55E"},"Produzindo":{bg:"#EFF6FF",text:"#1D4ED8",dot:"#3B82F6"},"Manutencao":{bg:"#FFF7ED",text:"#C2410C",dot:"#F97316"},"Inativa":{bg:"#F8FAFC",text:"#64748b",dot:"#94A3B8"}};
+  const load=async()=>{setLoading(true);const d=await db.get("impressoras","&deleted_at=is.null&order=created_at.desc");setImpressoras(Array.isArray(d)?d:[]);setLoading(false);};
+  useEffect(()=>{load();},[]);
+  const salvar=async()=>{if(!form.nome)return;setSalvando(true);if(editando){await db.updateUUID("impressoras",editando,form);}else{await db.insert("impressoras",{...form,potencia_watts:Number(form.potencia_watts||0),valor_aquisicao:Number(form.valor_aquisicao||0),vida_util_horas:Number(form.vida_util_horas||0),horas_trabalhadas:0});}setForm(vazio);setModal(false);setEditando(false);setSalvando(false);load();};
+  const mudarStatus=async(id,status)=>{await db.updateUUID("impressoras",id,{status});load();};
+  const custoPorHora=(imp)=>{if(!imp.vida_util_horas||!imp.valor_aquisicao)return 0;const dep=imp.valor_aquisicao/imp.vida_util_horas;const energia=(imp.potencia_watts/1000)*1.5;return dep+energia;};
+  const taxaOcupacao=(imp)=>imp.vida_util_horas>0?(imp.horas_trabalhadas/imp.vida_util_horas*100).toFixed(1):0;
+
+  if(detalhe){
+    const imp=impressoras.find(i=>i.id===detalhe)||detalhe;
+    const sc=STATUS_IMP[imp.status]||STATUS_IMP["Livre"];
+    return(
+      <div>
+        <button onClick={()=>setDetalhe(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Voltar</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+          <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase"}}>Impressora</div><div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{imp.nome}</div><div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginTop:2}}>{imp.modelo||"Sem modelo"}</div></div>
+              <span style={{background:sc.bg,color:sc.text,padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600}}>{imp.status}</span>
+            </div>
+            <div style={{padding:"24px 28px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+                {[["Fabricante",imp.fabricante||"—"],["N. Serie",imp.numero_serie||"—"],["Potencia",imp.potencia_watts?""+imp.potencia_watts+"W":"—"],["Valor Aquisicao",imp.valor_aquisicao?fmt(imp.valor_aquisicao):"—"],["Vida Util",imp.vida_util_horas?imp.vida_util_horas+"h":"—"],["Custo/Hora",fmt(custoPorHora(imp))]].map(([l,v])=>(
+                  <div key={l}><div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:4}}>{l}</div><div style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{v}</div></div>
+                ))}
+              </div>
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:10}}>Alterar Status</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {Object.keys(STATUS_IMP).map(s=>{const sc2=STATUS_IMP[s];const a=imp.status===s;return <button key={s} onClick={()=>mudarStatus(imp.id,s)} style={{padding:"7px 14px",borderRadius:8,border:"2px solid "+(a?sc2.dot:"#e2e8f0"),background:a?sc2.bg:"#fff",color:a?sc2.text:"#64748b",cursor:"pointer",fontSize:12,fontWeight:600}}>{s}</button>;})}
+                </div>
+              </div>
+              <button onClick={()=>{setForm(imp);setEditando(imp.id);setModal(true);}} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Editar Impressora</button>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignContent:"start"}}>
+            <Card icon="⏱️" label="Horas Trabalhadas" value={(imp.horas_trabalhadas||0)+"h"} accent="#3B82F6"/>
+            <Card icon="📊" label="Taxa Ocupacao" value={taxaOcupacao(imp)+"%"} accent="#8B5CF6"/>
+            <Card icon="💰" label="Custo por Hora" value={fmt(custoPorHora(imp))} accent="#F97316"/>
+            <Card icon="🔋" label="Potencia" value={(imp.potencia_watts||0)+"W"} accent="#22C55E"/>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
+        <Card icon="🖨️" label="Total" value={impressoras.length}/>
+        <Card icon="✅" label="Livres" value={impressoras.filter(i=>i.status==="Livre").length} accent="#22C55E"/>
+        <Card icon="🔧" label="Produzindo" value={impressoras.filter(i=>i.status==="Produzindo").length} accent="#3B82F6"/>
+        <Card icon="🔩" label="Manutencao" value={impressoras.filter(i=>i.status==="Manutencao").length} accent="#F97316"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+        <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        <button onClick={()=>{setForm(vazio);setEditando(false);setModal(true);}} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Impressora</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
+        {loading?<Spin/>:impressoras.length===0?<div style={{color:"#94a3b8",fontSize:14,padding:20}}>Nenhuma impressora cadastrada</div>:impressoras.map(imp=>{const sc=STATUS_IMP[imp.status]||STATUS_IMP["Livre"];return(
+          <div key={imp.id} style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden",cursor:"pointer"}} onClick={()=>setDetalhe(imp)}>
+            <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"18px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontSize:16,fontWeight:700,color:"#fff"}}>{imp.nome}</div><div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginTop:2}}>{imp.modelo||"—"}</div></div>
+              <span style={{background:sc.bg,color:sc.text,padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600}}>{imp.status}</span>
+            </div>
+            <div style={{padding:"16px 20px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {[["Potencia",(imp.potencia_watts||0)+"W"],["Horas",(imp.horas_trabalhadas||0)+"h"],["Custo/h",fmt(custoPorHora(imp))],["Ocupacao",taxaOcupacao(imp)+"%"]].map(([l,v])=>(
+                  <div key={l}><div style={{fontSize:10,color:"#94a3b8",letterSpacing:1,textTransform:"uppercase",marginBottom:2}}>{l}</div><div style={{fontSize:14,fontWeight:700,color:"#0f172a"}}>{v}</div></div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );})}
+      </div>
+      {modal&&(
+        <Modal title={editando?"Editar Impressora":"Nova Impressora"} sub="Cadastro" maxW={560}>
+          <FI label="Nome" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Ex: Bambu Lab A1" required/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <FI label="Modelo" value={form.modelo} onChange={e=>setForm({...form,modelo:e.target.value})} placeholder="Ex: A1 Mini"/>
+            <FI label="Fabricante" value={form.fabricante} onChange={e=>setForm({...form,fabricante:e.target.value})} placeholder="Ex: Bambu Lab"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <FI label="Numero de Serie" value={form.numero_serie} onChange={e=>setForm({...form,numero_serie:e.target.value})} placeholder="SN-000000"/>
+            <FI label="Data Aquisicao" value={form.data_aquisicao} onChange={e=>setForm({...form,data_aquisicao:e.target.value})} type="date"/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+            <FI label="Potencia (W)" value={form.potencia_watts} onChange={e=>setForm({...form,potencia_watts:e.target.value})} type="number" placeholder="Ex: 350"/>
+            <FI label="Valor R$" value={form.valor_aquisicao} onChange={e=>setForm({...form,valor_aquisicao:e.target.value})} type="number" placeholder="0"/>
+            <FI label="Vida Util (h)" value={form.vida_util_horas} onChange={e=>setForm({...form,vida_util_horas:e.target.value})} type="number" placeholder="Ex: 5000"/>
+          </div>
+          <FS label="Status" value={form.status} onChange={e=>setForm({...form,status:e.target.value})} options={Object.keys(STATUS_IMP)}/>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <BtnSecondary onClick={()=>{setModal(false);setEditando(false);}}>Cancelar</BtnSecondary>
+            <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":editando?"Salvar":"Cadastrar"}</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── PRODUCAO EXPANDIDA ───────────────────────────────────────────
+function ModuloProducao() {
+  const [prod,setProd]=useState([]);
+  const [peds,setPeds]=useState([]);
+  const [imps,setImps]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [detalhe,setDetalhe]=useState(null);
+  const [salvando,setSalvando]=useState(false);
+  const [filtroStatus,setFiltroStatus]=useState("Todos");
+  const vazio={pedido_ref:"",cliente:"",produto:"",quantidade:"",impressora_id:"",impressora_nome:"",operador:"",data_prevista:"",tempo_previsto:"",peso_previsto:"",observacoes:""};
+  const [form,setForm]=useState(vazio);
+  const STATUS_P={"Aguardando":{bg:"#FFF7ED",text:"#C2410C",dot:"#F97316"},"Em fila":{bg:"#F8FAFC",text:"#475569",dot:"#94A3B8"},"Produzindo":{bg:"#EFF6FF",text:"#1D4ED8",dot:"#3B82F6"},"Pausada":{bg:"#FFFBEB",text:"#B45309",dot:"#F59E0B"},"CQ":{bg:"#F5F3FF",text:"#6D28D9",dot:"#8B5CF6"},"Concluida":{bg:"#F0FDF4",text:"#15803D",dot:"#22C55E"},"Reprovada":{bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"}};
+  const load=async()=>{setLoading(true);const [p,pe,im]=await Promise.all([db.get("producao","&order=created_at.desc"),db.get("pedidos","&order=created_at.desc"),db.get("impressoras","&deleted_at=is.null&status=neq.Inativa")]);setProd(Array.isArray(p)?p:[]);setPeds(Array.isArray(pe)?pe:[]);setImps(Array.isArray(im)?im:[]);setLoading(false);};
+  useEffect(()=>{load();},[]);
+  const lista=prod.filter(p=>filtroStatus==="Todos"||p.status===filtroStatus);
+  const criar=async()=>{if(!form.cliente||!form.produto||!form.quantidade)return;setSalvando(true);const id="PR-"+String(prod.length+1).padStart(4,"0");await db.insert("producao",{id,...form,quantidade:Number(form.quantidade),tempo_previsto:Number(form.tempo_previsto||0),peso_previsto:Number(form.peso_previsto||0),data_inicio:hoje(),status:"Aguardando"});setForm(vazio);setModal(false);setSalvando(false);load();};
+  const upS=async(id,status,extra={})=>{await db.update("producao",id,{status,...extra});if(detalhe?.id===id)setDetalhe({...detalhe,status,...extra});load();};
+  const concluir=async(p)=>{const tempo_real=prompt("Tempo real de impressao (horas):");const peso_real=prompt("Peso real utilizado (gramas):");if(tempo_real&&peso_real){await upS(p.id,"Concluida",{tempo_real:Number(tempo_real),peso_real:Number(peso_real),data_final:hoje()});if(p.impressora_id){const imp=imps.find(i=>i.id===p.impressora_id);if(imp)await db.updateUUID("impressoras",p.impressora_id,{horas_trabalhadas:(Number(imp.horas_trabalhadas)||0)+Number(tempo_real)});}}};
+
+  if(detalhe){
+    const sc=STATUS_P[detalhe.status]||STATUS_P["Aguardando"];
+    return(
+      <div>
+        <button onClick={()=>setDetalhe(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Voltar</button>
+        <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden",maxWidth:700}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase"}}>Ordem de Producao</div><div style={{fontSize:26,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{detalhe.id}</div></div>
+            <Badge label={detalhe.status} map={STATUS_P}/>
+          </div>
+          <div style={{padding:"24px 28px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:24}}>
+              {[["Cliente",detalhe.cliente],["Produto",detalhe.produto],["Quantidade",detalhe.quantidade+" un."],["Impressora",detalhe.impressora_nome||"—"],["Operador",detalhe.operador||"—"],["Inicio",fmtD(detalhe.data_inicio)],["Previsao",fmtD(detalhe.data_prevista)],["Conclusao",fmtD(detalhe.data_final)],["Ref. Pedido",detalhe.pedido_ref||"—"]].map(([l,v])=>(
+                <div key={l}><div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:4}}>{l}</div><div style={{fontSize:13,color:"#1e293b",fontWeight:600}}>{v}</div></div>
+              ))}
+            </div>
+            {(detalhe.tempo_previsto||detalhe.peso_previsto)&&(
+              <div style={{background:"#f8fafc",borderRadius:12,padding:16,marginBottom:20}}>
+                <div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Previsto vs Real</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}}>
+                  {[["Tempo Prev.",(detalhe.tempo_previsto||"—")+"h"],["Tempo Real",(detalhe.tempo_real||"—")+"h"],["Peso Prev.",(detalhe.peso_previsto||"—")+"g"],["Peso Real",(detalhe.peso_real||"—")+"g"]].map(([l,v])=>(
+                    <div key={l}><div style={{fontSize:10,color:"#94a3b8",letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>{l}</div><div style={{fontSize:15,fontWeight:700,color:"#0f172a"}}>{v}</div></div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:10}}>Atualizar Status</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {Object.keys(STATUS_P).map(s=>{const sc2=STATUS_P[s];const a=detalhe.status===s;
+                return <button key={s} onClick={()=>s==="Concluida"?concluir(detalhe):upS(detalhe.id,s)} style={{padding:"7px 14px",borderRadius:8,border:"2px solid "+(a?sc2.dot:"#e2e8f0"),background:a?sc2.bg:"#fff",color:a?sc2.text:"#64748b",cursor:"pointer",fontSize:12,fontWeight:600}}>{s==="CQ"?"Ctrl. Qualidade":s}</button>;
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
+        <Card icon="🏭" label="Total OPs" value={prod.length}/>
+        <Card icon="⏳" label="Pendentes" value={prod.filter(p=>["Aguardando","Em fila"].includes(p.status)).length} accent="#F97316"/>
+        <Card icon="🔧" label="Produzindo" value={prod.filter(p=>p.status==="Produzindo").length} accent="#3B82F6"/>
+        <Card icon="✅" label="Concluidas" value={prod.filter(p=>p.status==="Concluida").length} accent="#22C55E"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:10}}>
+          <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}><option>Todos</option>{Object.keys(STATUS_P).map(s=><option key={s}>{s}</option>)}</select>
+          <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        </div>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova OP</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><TH cols={["OP","Pedido","Cliente","Produto","Qtd","Impressora","Previsao","Status",""]}/><tbody>{lista.length===0?<tr><td colSpan={9} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhuma ordem de producao</td></tr>:lista.map(p=>(<tr key={p.id} style={{borderTop:"1px solid #f1f5f9"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"12px 16px",fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#0284C7"}}>{p.id}</td><td style={{padding:"12px 16px",fontFamily:"monospace",fontSize:12,color:"#64748b"}}>{p.pedido_ref||"—"}</td><td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#334155",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.cliente}</td><td style={{padding:"12px 16px",fontSize:13,color:"#64748b",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.produto}</td><td style={{padding:"12px 16px",fontSize:13,fontWeight:700}}>{p.quantidade}</td><td style={{padding:"12px 16px",fontSize:12,color:"#64748b",whiteSpace:"nowrap"}}>{p.impressora_nome||"—"}</td><td style={{padding:"12px 16px",fontSize:12,color:"#94a3b8",whiteSpace:"nowrap"}}>{fmtD(p.data_prevista)}</td><td style={{padding:"12px 16px"}}><Badge label={p.status} map={STATUS_P}/></td><td style={{padding:"12px 16px"}}><button onClick={()=>setDetalhe(p)} style={{background:"#f1f5f9",border:"none",borderRadius:6,padding:"5px 10px",fontSize:14,cursor:"pointer"}}>👁️</button></td></tr>))}</tbody></table></div>}
+      </div>
+      {modal&&(
+        <Modal title="Nova Ordem de Producao" sub="Producao" maxW={560}>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Vincular Pedido (opcional)</label>
+            <select value={form.pedido_ref} onChange={e=>{const p=peds.find(x=>x.id===e.target.value);setForm({...form,pedido_ref:e.target.value,cliente:p?.cliente||form.cliente,produto:p?.produto||form.produto,quantidade:p?String(p.quantidade):form.quantidade});}} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}>
+              <option value="">Sem vinculo</option>{peds.filter(p=>["Aprovado","Em Producao"].includes(p.status)).map(p=><option key={p.id} value={p.id}>{p.id} — {p.cliente}</option>)}
+            </select>
+          </div>
+          <FI label="Cliente" value={form.cliente} onChange={e=>setForm({...form,cliente:e.target.value})} required/>
+          <FI label="Produto" value={form.produto} onChange={e=>setForm({...form,produto:e.target.value})} required/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <FI label="Quantidade" value={form.quantidade} onChange={e=>setForm({...form,quantidade:e.target.value})} type="number" required/>
+            <FI label="Data Prevista" value={form.data_prevista} onChange={e=>setForm({...form,data_prevista:e.target.value})} type="date"/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Impressora</label>
+            <select value={form.impressora_id} onChange={e=>{const imp=imps.find(x=>x.id===e.target.value);setForm({...form,impressora_id:e.target.value,impressora_nome:imp?.nome||"",});}} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}>
+              <option value="">Selecionar impressora...</option>{imps.map(i=><option key={i.id} value={i.id}>{i.nome} ({i.status})</option>)}
+            </select>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+            <FI label="Operador" value={form.operador} onChange={e=>setForm({...form,operador:e.target.value})} placeholder="Nome"/>
+            <FI label="Tempo Prev. (h)" value={form.tempo_previsto} onChange={e=>setForm({...form,tempo_previsto:e.target.value})} type="number" placeholder="0"/>
+            <FI label="Peso Prev. (g)" value={form.peso_previsto} onChange={e=>setForm({...form,peso_previsto:e.target.value})} type="number" placeholder="0"/>
+          </div>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Observacoes</label>
+            <textarea value={form.observacoes||""} onChange={e=>setForm({...form,observacoes:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b",outline:"none",boxSizing:"border-box",minHeight:60,resize:"vertical"}}/>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+            <BtnPrimary onClick={criar} disabled={salvando}>{salvando?"Salvando...":"Criar OP"}</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── FICHAS TECNICAS (BOM) ────────────────────────────────────────
+function ModuloFichas() {
+  const [fichas,setFichas]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [detalhe,setDetalhe]=useState(null);
+  const [salvando,setSalvando]=useState(false);
+  const [modalComp,setModalComp]=useState(false);
+  const [salvandoComp,setSalvandoComp]=useState(false);
+  const [componentes,setComponentes]=useState([]);
+  const [form,setForm]=useState({codigo:"",nome:"",versao:"1.0",responsavel:"",observacoes:""});
+  const [formC,setFormC]=useState({material:"",quantidade:"",unidade:"",custo_unitario:""});
+
+  const load=async()=>{setLoading(true);const d=await db.get("fichas_tecnicas","&deleted_at=is.null&order=created_at.desc");setFichas(Array.isArray(d)?d:[]);setLoading(false);};
+  const loadComps=async(fichaId)=>{const d=await db.get("ficha_componentes","&ficha_id=eq."+fichaId+"&order=created_at.asc");setComponentes(Array.isArray(d)?d:[]);};
+
+  useEffect(()=>{load();},[]);
+
+  const salvar=async()=>{if(!form.nome)return;setSalvando(true);await db.insert("fichas_tecnicas",{...form});setForm({codigo:"",nome:"",versao:"1.0",responsavel:"",observacoes:""});setModal(false);setSalvando(false);load();};
+
+  const salvarComp=async()=>{if(!formC.material||!formC.quantidade)return;setSalvandoComp(true);await db.insert("ficha_componentes",{ficha_id:detalhe.id,...formC,quantidade:Number(formC.quantidade),custo_unitario:Number(formC.custo_unitario||0)});setFormC({material:"",quantidade:"",unidade:"",custo_unitario:""});setModalComp(false);setSalvandoComp(false);loadComps(detalhe.id);};
+
+  const custoTotal=(comps)=>comps.reduce((s,c)=>s+(Number(c.quantidade)*Number(c.custo_unitario)),0);
+
+  const verFicha=async(f)=>{setDetalhe(f);await loadComps(f.id);};
+
+  if(detalhe){
+    const ct=custoTotal(componentes);
+    return(
+      <div>
+        <button onClick={()=>setDetalhe(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Voltar</button>
+        <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden",maxWidth:760}}>
+          <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+            <div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase"}}>Ficha Tecnica (BOM)</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{detalhe.nome}</div>
+              <div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:2}}>v{detalhe.versao} {detalhe.codigo?"· "+detalhe.codigo:""}</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:4}}>Custo Total</div>
+              <div style={{fontSize:24,fontWeight:700,color:"#38BDF8"}}>{fmt(ct)}</div>
+            </div>
+          </div>
+          <div style={{padding:"24px 28px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>Componentes / Materiais</div>
+              <button onClick={()=>setModalComp(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>+ Adicionar</button>
+            </div>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <TH cols={["Material","Quantidade","Unidade","Custo Unit.","Custo Total"]}/>
+              <tbody>
+                {componentes.length===0?<tr><td colSpan={5} style={{padding:24,textAlign:"center",color:"#94a3b8"}}>Nenhum componente ainda</td></tr>:
+                componentes.map(c=>(
+                  <tr key={c.id} style={{borderTop:"1px solid #f1f5f9"}}>
+                    <td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#1e293b"}}>{c.material}</td>
+                    <td style={{padding:"12px 16px",fontSize:13,color:"#64748b",textAlign:"center"}}>{c.quantidade}</td>
+                    <td style={{padding:"12px 16px",fontSize:13,color:"#64748b"}}>{c.unidade||"—"}</td>
+                    <td style={{padding:"12px 16px",fontSize:13,color:"#64748b"}}>{fmt(c.custo_unitario)}</td>
+                    <td style={{padding:"12px 16px",fontSize:13,fontWeight:700,color:"#0f172a"}}>{fmt(Number(c.quantidade)*Number(c.custo_unitario))}</td>
+                  </tr>
+                ))}
+                {componentes.length>0&&<tr style={{borderTop:"2px solid #e2e8f0",background:"#f8fafc"}}><td colSpan={4} style={{padding:"12px 16px",fontSize:13,fontWeight:700,color:"#0f172a"}}>CUSTO TOTAL DE PRODUCAO</td><td style={{padding:"12px 16px",fontSize:16,fontWeight:700,color:"#0284C7"}}>{fmt(ct)}</td></tr>}
+              </tbody>
+            </table>
+            {detalhe.observacoes&&<div style={{marginTop:16,padding:"12px 14px",background:"#f8fafc",borderRadius:10,fontSize:13,color:"#64748b"}}>{detalhe.observacoes}</div>}
+          </div>
+        </div>
+        {modalComp&&(
+          <Modal title="Adicionar Componente" sub="Ficha Tecnica">
+            <FI label="Material / Insumo" value={formC.material} onChange={e=>setFormC({...formC,material:e.target.value})} placeholder="Ex: PLA Preto, Iman 10mm..." required/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <FI label="Quantidade" value={formC.quantidade} onChange={e=>setFormC({...formC,quantidade:e.target.value})} type="number" placeholder="0" required/>
+              <FI label="Unidade" value={formC.unidade} onChange={e=>setFormC({...formC,unidade:e.target.value})} placeholder="g, un, m..."/>
+            </div>
+            <FI label="Custo Unitario (R$)" value={formC.custo_unitario} onChange={e=>setFormC({...formC,custo_unitario:e.target.value})} type="number" placeholder="0,00"/>
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <BtnSecondary onClick={()=>setModalComp(false)}>Cancelar</BtnSecondary>
+              <BtnPrimary onClick={salvarComp} disabled={salvandoComp}>{salvandoComp?"Salvando...":"Adicionar"}</BtnPrimary>
+            </div>
+          </Modal>
+        )}
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
+        <Card icon="📄" label="Fichas Cadastradas" value={fichas.length}/>
+        <Card icon="🔩" label="Com Componentes" value={fichas.length} accent="#3B82F6"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+        <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Ficha</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><TH cols={["Codigo","Produto","Versao","Responsavel",""]}/><tbody>{fichas.length===0?<tr><td colSpan={5} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhuma ficha tecnica cadastrada</td></tr>:fichas.map(f=>(<tr key={f.id} style={{borderTop:"1px solid #f1f5f9"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"13px 16px",fontFamily:"monospace",fontSize:12,color:"#64748b"}}>{f.codigo||"—"}</td><td style={{padding:"13px 16px",fontSize:13,fontWeight:700,color:"#0f172a"}}>{f.nome}</td><td style={{padding:"13px 16px",fontSize:12,color:"#64748b"}}>v{f.versao}</td><td style={{padding:"13px 16px",fontSize:13,color:"#64748b"}}>{f.responsavel||"—"}</td><td style={{padding:"13px 16px"}}><button onClick={()=>verFicha(f)} style={{background:"#f1f5f9",border:"none",borderRadius:6,padding:"5px 10px",fontSize:14,cursor:"pointer"}}>👁️</button></td></tr>))}</tbody></table></div>}
+      </div>
+      {modal&&(
+        <Modal title="Nova Ficha Tecnica" sub="BOM — Bill of Materials">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <FI label="Codigo" value={form.codigo} onChange={e=>setForm({...form,codigo:e.target.value})} placeholder="Ex: FT-001"/>
+            <FI label="Versao" value={form.versao} onChange={e=>setForm({...form,versao:e.target.value})} placeholder="1.0"/>
+          </div>
+          <FI label="Nome do Produto" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Ex: Suporte para Controle" required/>
+          <FI label="Responsavel" value={form.responsavel} onChange={e=>setForm({...form,responsavel:e.target.value})} placeholder="Nome do responsavel"/>
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Observacoes</label>
+            <textarea value={form.observacoes||""} onChange={e=>setForm({...form,observacoes:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b",outline:"none",boxSizing:"border-box",minHeight:60,resize:"vertical"}}/>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+            <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":"Criar Ficha"}</BtnPrimary>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 // ─── CALCULADORA (INALTERADA) ─────────────────────────────────────
 const FILS={PLA:{fator:0.140},PETG:{fator:0.125},TPU:{fator:0.160}};
 const FV={varejo:3,atacado:2.2};
@@ -680,6 +1027,8 @@ export default function App() {
     {id:"fluxo",label:"Fluxo de Caixa",icon:"💳",admin:true},
     {id:"estoque",label:"Estoque",icon:"📦",admin:true},
     {id:"producao",label:"Producao",icon:"🏭",admin:true},
+    {id:"impressoras",label:"Impressoras",icon:"🖨️",admin:true},
+    {id:"fichas",label:"Fichas Tecnicas",icon:"📄",admin:true},
     {id:"calculadora",label:"Calculadora",icon:"🧮"},
   ];
 
@@ -722,6 +1071,8 @@ export default function App() {
         {aba==="fluxo"&&<ModuloFluxo/>}
         {aba==="estoque"&&<ModuloEstoque/>}
         {aba==="producao"&&<ModuloProducao/>}
+        {aba==="impressoras"&&<ModuloImpressoras/>}
+        {aba==="fichas"&&<ModuloFichas/>}
         {aba==="calculadora"&&<ModuloCalc/>}
       </main>
     </div>
