@@ -1295,6 +1295,302 @@ function ModuloDRE() {
   );
 }
 
+// ─── FORNECEDORES ─────────────────────────────────────────────────
+function ModuloFornecedores() {
+  const [fornecedores,setFornecedores]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [detalhe,setDetalhe]=useState(null);
+  const [editando,setEditando]=useState(false);
+  const [salvando,setSalvando]=useState(false);
+  const [busca,setBusca]=useState("");
+  const CATEGORIAS=["Filamento","Embalagem","Componentes","Ferramentas","Servicos","Energia","Outros"];
+  const ESTADOS=["","AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"];
+  const vazio={nome:"",cnpj:"",contato:"",telefone:"",email:"",endereco:"",cidade:"",estado:"",cep:"",condicao_pagamento:"",categoria:"",observacoes:"",status:"Ativo"};
+  const [form,setForm]=useState(vazio);
+
+  const load=async()=>{setLoading(true);const d=await db.get("fornecedores","&deleted_at=is.null&order=created_at.desc");setFornecedores(Array.isArray(d)?d:[]);setLoading(false);};
+  useEffect(()=>{load();},[]);
+
+  const lista=fornecedores.filter(f=>f.nome.toLowerCase().includes(busca.toLowerCase())||f.cnpj?.includes(busca)||f.categoria?.toLowerCase().includes(busca.toLowerCase()));
+
+  const salvar=async()=>{if(!form.nome)return;setSalvando(true);if(editando){await db.updateUUID("fornecedores",editando,form);}else{await db.insert("fornecedores",{...form});}setForm(vazio);setModal(false);setEditando(false);setSalvando(false);load();};
+
+  if(detalhe)return(
+    <div>
+      <button onClick={()=>setDetalhe(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Voltar</button>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden",maxWidth:640}}>
+        <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase"}}>Fornecedor</div><div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{detalhe.nome}</div><div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginTop:2}}>{detalhe.categoria||"—"}</div></div>
+          <span style={{background:detalhe.status==="Ativo"?"#F0FDF4":"#FEF2F2",color:detalhe.status==="Ativo"?"#15803D":"#DC2626",padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600}}>{detalhe.status}</span>
+        </div>
+        <div style={{padding:"24px 28px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+            {[["CNPJ",detalhe.cnpj||"—"],["Contato",detalhe.contato||"—"],["Telefone",detalhe.telefone||"—"],["Email",detalhe.email||"—"],["Cidade",detalhe.cidade?(detalhe.cidade+(detalhe.estado?" / "+detalhe.estado:"")):"—"],["Cond. Pagamento",detalhe.condicao_pagamento||"—"]].map(([l,v])=>(
+              <div key={l}><div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:4}}>{l}</div><div style={{fontSize:14,color:"#1e293b",fontWeight:600}}>{v}</div></div>
+            ))}
+          </div>
+          {detalhe.observacoes&&<div style={{padding:"12px 14px",background:"#f8fafc",borderRadius:10,fontSize:13,color:"#64748b",marginBottom:20}}>{detalhe.observacoes}</div>}
+          <button onClick={()=>{setForm(detalhe);setEditando(detalhe.id);setModal(true);}} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>Editar Fornecedor</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
+        <Card icon="🏢" label="Total" value={fornecedores.length}/>
+        <Card icon="✅" label="Ativos" value={fornecedores.filter(f=>f.status==="Ativo").length} accent="#22C55E"/>
+        <Card icon="📦" label="Filamentos" value={fornecedores.filter(f=>f.categoria==="Filamento").length} accent="#3B82F6"/>
+        <Card icon="🔩" label="Componentes" value={fornecedores.filter(f=>f.categoria==="Componentes").length} accent="#8B5CF6"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12,flexWrap:"wrap"}}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por nome, CNPJ ou categoria..." style={{flex:1,minWidth:200,background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 16px",fontSize:14,color:"#1e293b",outline:"none"}}/>
+        <button onClick={()=>{setForm(vazio);setEditando(false);setModal(true);}} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ Novo Fornecedor</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+          <TH cols={["Nome","CNPJ","Contato","Telefone","Categoria","Cond. Pagamento","Status",""]}/>
+          <tbody>{lista.length===0?<tr><td colSpan={8} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhum fornecedor encontrado</td></tr>:
+          lista.map(f=>(<tr key={f.id} style={{borderTop:"1px solid #f1f5f9"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <td style={{padding:"13px 16px",fontSize:13,fontWeight:700,color:"#0f172a"}}>{f.nome}</td>
+            <td style={{padding:"13px 16px",fontSize:12,color:"#64748b",fontFamily:"monospace"}}>{f.cnpj||"—"}</td>
+            <td style={{padding:"13px 16px",fontSize:13,color:"#64748b"}}>{f.contato||"—"}</td>
+            <td style={{padding:"13px 16px",fontSize:13,color:"#64748b"}}>{f.telefone||"—"}</td>
+            <td style={{padding:"13px 16px",fontSize:12,color:"#64748b"}}>{f.categoria||"—"}</td>
+            <td style={{padding:"13px 16px",fontSize:12,color:"#64748b"}}>{f.condicao_pagamento||"—"}</td>
+            <td style={{padding:"13px 16px"}}><span style={{background:f.status==="Ativo"?"#F0FDF4":"#FEF2F2",color:f.status==="Ativo"?"#15803D":"#DC2626",padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:600}}>{f.status}</span></td>
+            <td style={{padding:"13px 16px"}}><button onClick={()=>setDetalhe(f)} style={{background:"#f1f5f9",border:"none",borderRadius:6,padding:"5px 10px",fontSize:14,cursor:"pointer"}}>👁️</button></td>
+          </tr>))}</tbody>
+        </table></div>}
+      </div>
+      {modal&&(<Modal title={editando?"Editar Fornecedor":"Novo Fornecedor"} sub="Cadastro" maxW={600}>
+        <FI label="Nome / Razao Social" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Nome da empresa" required/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="CNPJ" value={form.cnpj} onChange={e=>setForm({...form,cnpj:e.target.value})} placeholder="00.000.000/0000-00"/>
+          <FS label="Categoria" value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} options={["",...CATEGORIAS]}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Contato" value={form.contato} onChange={e=>setForm({...form,contato:e.target.value})} placeholder="Nome do contato"/>
+          <FI label="Telefone" value={form.telefone} onChange={e=>setForm({...form,telefone:e.target.value})} placeholder="(00) 00000-0000"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} type="email" placeholder="email@empresa.com"/>
+          <FI label="Cond. Pagamento" value={form.condicao_pagamento} onChange={e=>setForm({...form,condicao_pagamento:e.target.value})} placeholder="Ex: 30/60 dias, A vista"/>
+        </div>
+        <FI label="Endereco" value={form.endereco} onChange={e=>setForm({...form,endereco:e.target.value})} placeholder="Rua, numero, bairro"/>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:12}}>
+          <FI label="Cidade" value={form.cidade} onChange={e=>setForm({...form,cidade:e.target.value})}/>
+          <FS label="Estado" value={form.estado} onChange={e=>setForm({...form,estado:e.target.value})} options={ESTADOS}/>
+          <FI label="CEP" value={form.cep} onChange={e=>setForm({...form,cep:e.target.value})} placeholder="00000-000"/>
+        </div>
+        <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Observacoes</label><textarea value={form.observacoes||""} onChange={e=>setForm({...form,observacoes:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b",outline:"none",boxSizing:"border-box",minHeight:70,resize:"vertical"}}/></div>
+        <div style={{display:"flex",gap:10}}>
+          <BtnSecondary onClick={()=>{setModal(false);setEditando(false);}}>Cancelar</BtnSecondary>
+          <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":editando?"Salvar":"Cadastrar"}</BtnPrimary>
+        </div>
+      </Modal>)}
+    </div>
+  );
+}
+
+// ─── COMPRAS ──────────────────────────────────────────────────────
+function ModuloCompras({logado}) {
+  const [compras,setCompras]=useState([]);
+  const [fornecedores,setFornecedores]=useState([]);
+  const [estoque,setEstoque]=useState([]);
+  const [contasBanc,setContasBanc]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [detalhe,setDetalhe]=useState(null);
+  const [salvando,setSalvando]=useState(false);
+  const [filtroStatus,setFiltroStatus]=useState("Todos");
+  const [itens,setItens]=useState([{descricao:"",quantidade:"",unidade:"",valor_unitario:"",estoque_item_id:""}]);
+  const vazio={fornecedor_id:"",fornecedor_nome:"",descricao:"",data_entrega_prevista:"",forma_pagamento:"",conta_bancaria_id:"",observacoes:"",solicitante:logado?.nome||""};
+  const [form,setForm]=useState(vazio);
+
+  const STATUS_C={"Solicitado":{bg:"#F8FAFC",text:"#475569",dot:"#94A3B8"},"Em cotacao":{bg:"#FFF7ED",text:"#C2410C",dot:"#F97316"},"Aprovado":{bg:"#EFF6FF",text:"#1D4ED8",dot:"#3B82F6"},"Comprado":{bg:"#FDF4FF",text:"#7E22CE",dot:"#A855F7"},"Recebido":{bg:"#F0FDF4",text:"#15803D",dot:"#22C55E"},"Cancelado":{bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"}};
+
+  const load=async()=>{
+    setLoading(true);
+    const [c,f,e,cb]=await Promise.all([
+      db.get("pedidos_compra","&deleted_at=is.null&order=created_at.desc"),
+      db.get("fornecedores","&deleted_at=is.null&status=eq.Ativo&order=nome.asc"),
+      db.get("estoque"),
+      db.get("contas_bancarias","&ativa=eq.true")
+    ]);
+    setCompras(Array.isArray(c)?c:[]);setFornecedores(Array.isArray(f)?f:[]);setEstoque(Array.isArray(e)?e:[]);setContasBanc(Array.isArray(cb)?cb:[]);setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+
+  const lista=compras.filter(c=>filtroStatus==="Todos"||c.status===filtroStatus);
+
+  const addItem=()=>setItens([...itens,{descricao:"",quantidade:"",unidade:"",valor_unitario:"",estoque_item_id:""}]);
+  const remItem=(i)=>setItens(itens.filter((_,idx)=>idx!==i));
+  const updItem=(i,campo,val)=>setItens(itens.map((it,idx)=>idx===i?{...it,[campo]:val}:it));
+  const totalItens=itens.reduce((s,it)=>s+(Number(it.quantidade||0)*Number(it.valor_unitario||0)),0);
+
+  const salvar=async()=>{
+    if(!form.descricao)return;
+    setSalvando(true);
+    const id="PC-"+String(compras.length+1).padStart(4,"0");
+    await db.insert("pedidos_compra",{id,...form,valor_total:totalItens,data_solicitacao:hoje(),status:"Solicitado"});
+    for(const it of itens){
+      if(it.descricao&&it.quantidade){
+        await db.insert("itens_pedido_compra",{pedido_compra_id:id,...it,quantidade:Number(it.quantidade),valor_unitario:Number(it.valor_unitario||0),valor_total:Number(it.quantidade)*Number(it.valor_unitario||0)});
+      }
+    }
+    setForm(vazio);setItens([{descricao:"",quantidade:"",unidade:"",valor_unitario:"",estoque_item_id:""}]);setModal(false);setSalvando(false);load();
+  };
+
+  const avancarStatus=async(c)=>{
+    const prox={"Solicitado":"Em cotacao","Em cotacao":"Aprovado","Aprovado":"Comprado","Comprado":"Recebido"};
+    if(!prox[c.status])return;
+    const novoStatus=prox[c.status];
+    const extra={};
+    if(novoStatus==="Aprovado")extra.data_aprovacao=hoje();
+    if(novoStatus==="Recebido"){
+      extra.data_recebimento=hoje();
+      // Buscar itens e atualizar estoque
+      const itensPC=await db.get("itens_pedido_compra","&pedido_compra_id=eq."+c.id);
+      if(Array.isArray(itensPC)){
+        for(const it of itensPC){
+          if(it.estoque_item_id){
+            const est=estoque.find(e=>e.id===it.estoque_item_id);
+            if(est)await db.update("estoque",it.estoque_item_id,{estoque:est.estoque+Number(it.quantidade)});
+          }
+        }
+      }
+      // Gerar conta a pagar
+      if(c.valor_total>0){
+        await db.insert("contas_pagar",{descricao:"Compra "+c.id+" - "+c.descricao,fornecedor:c.fornecedor_nome||"—",categoria:"Fornecedor",valor:c.valor_total,vencimento:hoje(),status:"Pendente"});
+      }
+    }
+    await db.update("pedidos_compra",c.id,{status:novoStatus,...extra},"id");
+    if(detalhe?.id===c.id)setDetalhe({...detalhe,status:novoStatus,...extra});
+    load();
+  };
+
+  const loadItensDetalhe=async(c)=>{
+    const its=await db.get("itens_pedido_compra","&pedido_compra_id=eq."+c.id);
+    setDetalhe({...c,itens:Array.isArray(its)?its:[]});
+  };
+
+  if(detalhe)return(
+    <div>
+      <button onClick={()=>setDetalhe(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#64748b",fontSize:14,marginBottom:20,display:"flex",alignItems:"center",gap:6}}>← Voltar</button>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden",maxWidth:700}}>
+        <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"24px 28px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase"}}>Pedido de Compra</div><div style={{fontSize:24,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{detalhe.id}</div><div style={{fontSize:13,color:"rgba(255,255,255,0.4)",marginTop:2}}>{detalhe.descricao}</div></div>
+          <div style={{textAlign:"right"}}>
+            <Badge label={detalhe.status} map={STATUS_C}/>
+            <div style={{fontSize:20,fontWeight:700,color:"#38BDF8",marginTop:8}}>{fmt(detalhe.valor_total)}</div>
+          </div>
+        </div>
+        <div style={{padding:"24px 28px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:20}}>
+            {[["Fornecedor",detalhe.fornecedor_nome||"—"],["Solicitante",detalhe.solicitante||"—"],["Solicitacao",fmtD(detalhe.data_solicitacao)],["Aprovacao",fmtD(detalhe.data_aprovacao)],["Prev. Entrega",fmtD(detalhe.data_entrega_prevista)],["Recebimento",fmtD(detalhe.data_recebimento)]].map(([l,v])=>(
+              <div key={l}><div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:4}}>{l}</div><div style={{fontSize:13,color:"#1e293b",fontWeight:600}}>{v}</div></div>
+            ))}
+          </div>
+          {detalhe.itens&&detalhe.itens.length>0&&(
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:12}}>Itens do Pedido</div>
+              <table style={{width:"100%",borderCollapse:"collapse"}}><TH cols={["Item","Qtd","Unid.","Valor Unit.","Total"]}/><tbody>
+                {detalhe.itens.map((it,i)=>(<tr key={i} style={{borderTop:"1px solid #f1f5f9"}}><td style={{padding:"10px 16px",fontSize:13,color:"#334155"}}>{it.descricao}</td><td style={{padding:"10px 16px",fontSize:13,textAlign:"center"}}>{it.quantidade}</td><td style={{padding:"10px 16px",fontSize:12,color:"#64748b"}}>{it.unidade||"—"}</td><td style={{padding:"10px 16px",fontSize:13}}>{fmt(it.valor_unitario)}</td><td style={{padding:"10px 16px",fontSize:13,fontWeight:700,color:"#0284C7"}}>{fmt(it.valor_total)}</td></tr>))}
+                <tr style={{borderTop:"2px solid #e2e8f0",background:"#f8fafc"}}><td colSpan={4} style={{padding:"10px 16px",fontSize:13,fontWeight:700}}>TOTAL</td><td style={{padding:"10px 16px",fontSize:15,fontWeight:700,color:"#0284C7"}}>{fmt(detalhe.valor_total)}</td></tr>
+              </tbody></table>
+            </div>
+          )}
+          {detalhe.status!=="Recebido"&&detalhe.status!=="Cancelado"&&(
+            <div>
+              <div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",marginBottom:10}}>Proxima Acao</div>
+              <div style={{display:"flex",gap:10}}>
+                {{"Solicitado":"Em cotacao","Em cotacao":"Aprovado","Aprovado":"Comprado","Comprado":"Recebido"}[detalhe.status]&&(
+                  <button onClick={()=>avancarStatus(detalhe)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>
+                    {{"Solicitado":"▶ Iniciar Cotacao","Em cotacao":"✓ Aprovar","Aprovado":"🛒 Marcar como Comprado","Comprado":"📦 Confirmar Recebimento"}[detalhe.status]}
+                  </button>
+                )}
+                <button onClick={()=>db.update("pedidos_compra",detalhe.id,{status:"Cancelado"},"id").then(()=>{setDetalhe({...detalhe,status:"Cancelado"});load();})} style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"10px 16px",color:"#DC2626",fontSize:13,fontWeight:600,cursor:"pointer"}}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:14,marginBottom:24}}>
+        <Card icon="🛒" label="Total Compras" value={compras.length}/>
+        <Card icon="⏳" label="Em Andamento" value={compras.filter(c=>["Solicitado","Em cotacao","Aprovado","Comprado"].includes(c.status)).length} accent="#F97316"/>
+        <Card icon="✅" label="Recebidos" value={compras.filter(c=>c.status==="Recebido").length} accent="#22C55E"/>
+        <Card icon="💰" label="Valor Total" value={fmt(compras.filter(c=>c.status==="Recebido").reduce((s,c)=>s+Number(c.valor_total),0))} accent="#3B82F6"/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:10}}>
+          <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}><option>Todos</option>{Object.keys(STATUS_C).map(s=><option key={s}>{s}</option>)}</select>
+          <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        </div>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Compra</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+          <TH cols={["Pedido","Descricao","Fornecedor","Valor Total","Solicitacao","Prev. Entrega","Status",""]}/>
+          <tbody>{lista.length===0?<tr><td colSpan={8} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhum pedido de compra</td></tr>:
+          lista.map(c=>(<tr key={c.id} style={{borderTop:"1px solid #f1f5f9"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+            <td style={{padding:"12px 16px",fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#0284C7"}}>{c.id}</td>
+            <td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#334155",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.descricao}</td>
+            <td style={{padding:"12px 16px",fontSize:13,color:"#64748b",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.fornecedor_nome||"—"}</td>
+            <td style={{padding:"12px 16px",fontSize:13,fontWeight:700,color:"#0f172a"}}>{fmt(c.valor_total)}</td>
+            <td style={{padding:"12px 16px",fontSize:12,color:"#94a3b8",whiteSpace:"nowrap"}}>{fmtD(c.data_solicitacao)}</td>
+            <td style={{padding:"12px 16px",fontSize:12,color:"#94a3b8",whiteSpace:"nowrap"}}>{fmtD(c.data_entrega_prevista)}</td>
+            <td style={{padding:"12px 16px"}}><Badge label={c.status} map={STATUS_C}/></td>
+            <td style={{padding:"12px 16px"}}><button onClick={()=>loadItensDetalhe(c)} style={{background:"#f1f5f9",border:"none",borderRadius:6,padding:"5px 10px",fontSize:14,cursor:"pointer"}}>👁️</button></td>
+          </tr>))}</tbody>
+        </table></div>}
+      </div>
+      {modal&&(<Modal title="Novo Pedido de Compra" sub="Compras" maxW={620}>
+        <FI label="Descricao" value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})} placeholder="Ex: Filamento PLA - Reposicao mensal" required/>
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Fornecedor</label>
+          <select value={form.fornecedor_id} onChange={e=>{const f=fornecedores.find(x=>x.id===e.target.value);setForm({...form,fornecedor_id:e.target.value,fornecedor_nome:f?.nome||"",});}} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}>
+            <option value="">Selecionar fornecedor...</option>{fornecedores.map(f=><option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Solicitante" value={form.solicitante} onChange={e=>setForm({...form,solicitante:e.target.value})}/>
+          <FI label="Prev. Entrega" value={form.data_entrega_prevista} onChange={e=>setForm({...form,data_entrega_prevista:e.target.value})} type="date"/>
+        </div>
+        {/* Itens */}
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase"}}>Itens do Pedido</label>
+            <button onClick={addItem} style={{background:"#EFF6FF",border:"none",borderRadius:6,padding:"4px 12px",fontSize:12,color:"#0284C7",cursor:"pointer",fontWeight:600}}>+ Item</button>
+          </div>
+          {itens.map((it,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 1fr auto",gap:8,marginBottom:8,alignItems:"flex-end"}}>
+              <FI label={i===0?"Descricao":""} value={it.descricao} onChange={e=>updItem(i,"descricao",e.target.value)} placeholder="Item..."/>
+              <FI label={i===0?"Qtd":""} value={it.quantidade} onChange={e=>updItem(i,"quantidade",e.target.value)} type="number" placeholder="0"/>
+              <FI label={i===0?"Unid.":""} value={it.unidade} onChange={e=>updItem(i,"unidade",e.target.value)} placeholder="kg, un"/>
+              <FI label={i===0?"Valor Unit.":""} value={it.valor_unitario} onChange={e=>updItem(i,"valor_unitario",e.target.value)} type="number" placeholder="0"/>
+              {i>0&&<button onClick={()=>remItem(i)} style={{background:"#FEF2F2",border:"none",borderRadius:6,padding:"8px",fontSize:14,color:"#DC2626",cursor:"pointer",marginBottom:14}}>✕</button>}
+            </div>
+          ))}
+          {totalItens>0&&<div style={{background:"#EFF6FF",borderRadius:8,padding:"8px 14px",fontSize:13,fontWeight:700,color:"#0284C7"}}>Total: {fmt(totalItens)}</div>}
+        </div>
+        <FI label="Observacoes" value={form.observacoes} onChange={e=>setForm({...form,observacoes:e.target.value})} placeholder="Observacoes gerais..."/>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+          <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":"Criar Pedido"}</BtnPrimary>
+        </div>
+      </Modal>)}
+    </div>
+  );
+}
+
 // ─── CALCULADORA (INALTERADA) ─────────────────────────────────────
 const FILS={PLA:{fator:0.140},PETG:{fator:0.125},TPU:{fator:0.160}};
 const FV={varejo:3,atacado:2.2};
@@ -1345,6 +1641,8 @@ export default function App() {
     {id:"producao",label:"Producao",icon:"🏭",admin:true},
     {id:"impressoras",label:"Impressoras",icon:"🖨️",admin:true},
     {id:"fichas",label:"Fichas Tecnicas",icon:"📄",admin:true},
+    {id:"fornecedores",label:"Fornecedores",icon:"🏢",admin:true},
+    {id:"compras",label:"Compras",icon:"🛒",admin:true},
     {id:"calculadora",label:"Calculadora",icon:"🧮"},
   ];
 
@@ -1392,6 +1690,8 @@ export default function App() {
         {aba==="producao"&&<ModuloProducao/>}
         {aba==="impressoras"&&<ModuloImpressoras/>}
         {aba==="fichas"&&<ModuloFichas/>}
+        {aba==="fornecedores"&&<ModuloFornecedores/>}
+        {aba==="compras"&&<ModuloCompras logado={logado}/>}
         {aba==="calculadora"&&<ModuloCalc/>}
       </main>
     </div>
