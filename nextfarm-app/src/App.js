@@ -603,38 +603,6 @@ function ModuloEstoque() {
   );
 }
 
-// ─── PRODUCAO ─────────────────────────────────────────────────────
-function ModuloProducao() {
-  const [prod,setProd]=useState([]);
-  const [peds,setPeds]=useState([]);
-  const [loading,setLoading]=useState(true);
-  const [modal,setModal]=useState(false);
-  const [salvando,setSalvando]=useState(false);
-  const [form,setForm]=useState({pedido_ref:"",cliente:"",produto:"",quantidade:""});
-  const load=async()=>{const [p,pe]=await Promise.all([db.get("producao","&order=created_at.desc"),db.get("pedidos","&order=created_at.desc")]);setProd(Array.isArray(p)?p:[]);setPeds(Array.isArray(pe)?pe:[]);setLoading(false);};
-  useEffect(()=>{load();},[]);
-  const criar=async()=>{if(!form.cliente||!form.produto||!form.quantidade)return;setSalvando(true);const id="PR-"+String(prod.length+1).padStart(4,"0");await db.insert("producao",{id,...form,quantidade:Number(form.quantidade),data_inicio:hoje(),status:"Aguardando"});setForm({pedido_ref:"",cliente:"",produto:"",quantidade:""});setModal(false);setSalvando(false);load();};
-  const upS=async(id,status)=>{await db.update("producao",id,{status});load();};
-  return(
-    <div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:14,marginBottom:24}}>
-        <Card icon="🏭" label="Total Ordens" value={prod.length}/>
-        <Card icon="⏳" label="Pendentes" value={prod.filter(p=>["Aguardando","Em producao"].includes(p.status)).length} accent="#F97316"/>
-        <Card icon="🔧" label="Em Producao" value={prod.filter(p=>p.status==="Em producao").length} accent="#3B82F6"/>
-        <Card icon="✅" label="Concluidos" value={prod.filter(p=>["Pronto","Despachado"].includes(p.status)).length} accent="#22C55E"/>
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
-        <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
-        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Ordem</button>
-      </div>
-      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-        {loading?<Spin/>:<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}><TH cols={["Ordem","Ref.","Cliente","Produto","Qtd","Inicio","Status","Acoes"]}/><tbody>{prod.length===0?<tr><td colSpan={8} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhuma ordem</td></tr>:prod.map(p=>(<tr key={p.id} style={{borderTop:"1px solid #f1f5f9"}} onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}><td style={{padding:"12px 16px",fontFamily:"monospace",fontSize:13,fontWeight:700,color:"#0284C7"}}>{p.id}</td><td style={{padding:"12px 16px",fontFamily:"monospace",fontSize:12,color:"#64748b"}}>{p.pedido_ref||"—"}</td><td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#334155"}}>{p.cliente}</td><td style={{padding:"12px 16px",fontSize:13,color:"#64748b",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.produto}</td><td style={{padding:"12px 16px",fontSize:13,fontWeight:700}}>{p.quantidade}</td><td style={{padding:"12px 16px",fontSize:12,color:"#94a3b8"}}>{fmtD(p.data_inicio)}</td><td style={{padding:"12px 16px"}}><Badge label={p.status} map={SPROD}/></td><td style={{padding:"12px 16px"}}><div style={{display:"flex",gap:6}}>{p.status==="Aguardando"&&<button onClick={()=>upS(p.id,"Em producao")} style={{background:"#EFF6FF",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,color:"#1D4ED8",cursor:"pointer",fontWeight:600}}>Iniciar</button>}{p.status==="Em producao"&&<button onClick={()=>upS(p.id,"Pronto")} style={{background:"#F0FDF4",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,color:"#15803D",cursor:"pointer",fontWeight:600}}>Pronto</button>}{p.status==="Pronto"&&<button onClick={()=>upS(p.id,"Despachado")} style={{background:"#F5F3FF",border:"none",borderRadius:6,padding:"5px 10px",fontSize:11,color:"#6D28D9",cursor:"pointer",fontWeight:600}}>Despachar</button>}{p.status==="Despachado"&&<span style={{fontSize:12,color:"#94a3b8"}}>Concluido</span>}</div></td></tr>))}</tbody></table></div>}
-      </div>
-      {modal&&<Modal title="Nova Ordem de Producao" sub="Producao"><div style={{marginBottom:16}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:6}}>Vincular Pedido (opcional)</label><select value={form.pedido_ref} onChange={e=>{const p=peds.find(x=>x.id===e.target.value);setForm({...form,pedido_ref:e.target.value,cliente:p?.cliente||form.cliente,produto:p?.produto||form.produto,quantidade:p?String(p.quantidade):form.quantidade});}} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Sem vinculo</option>{peds.filter(p=>["Aprovado","Em Producao"].includes(p.status)).map(p=><option key={p.id} value={p.id}>{p.id} - {p.cliente}</option>)}</select></div><FI label="Cliente" value={form.cliente} onChange={e=>setForm({...form,cliente:e.target.value})}/><FI label="Produto" value={form.produto} onChange={e=>setForm({...form,produto:e.target.value})}/><FI label="Quantidade" value={form.quantidade} onChange={e=>setForm({...form,quantidade:e.target.value})} type="number"/><div style={{display:"flex",gap:10,marginTop:8}}><BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary><BtnPrimary onClick={criar} disabled={salvando}>{salvando?"Salvando...":"Criar Ordem"}</BtnPrimary></div></Modal>}
-    </div>
-  );
-}
-
 // ─── IMPRESSORAS ─────────────────────────────────────────────────
 function ModuloImpressoras() {
   const [impressoras,setImpressoras]=useState([]);
