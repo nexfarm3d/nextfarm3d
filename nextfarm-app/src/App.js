@@ -950,6 +950,351 @@ function ModuloFichas() {
   );
 }
 
+// ─── CONTAS BANCARIAS ─────────────────────────────────────────────
+function ModuloContasBancarias({onSelect,soLeitura}) {
+  const [contas,setContas]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [salvando,setSalvando]=useState(false);
+  const [form,setForm]=useState({nome:"",banco:"",tipo:"Corrente",saldo_inicial:""});
+  const TIPOS=["Corrente","Poupanca","Caixa","Digital","Investimento"];
+  const load=async()=>{setLoading(true);const d=await db.get("contas_bancarias","&ativa=eq.true&order=created_at.asc");setContas(Array.isArray(d)?d:[]);setLoading(false);};
+  useEffect(()=>{load();},[]);
+  const salvar=async()=>{if(!form.nome)return;setSalvando(true);await db.insert("contas_bancarias",{...form,saldo_inicial:Number(form.saldo_inicial||0)});setForm({nome:"",banco:"",tipo:"Corrente",saldo_inicial:""});setModal(false);setSalvando(false);load();};
+  if(soLeitura)return(
+    <select onChange={e=>onSelect&&onSelect(e.target.value)} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}>
+      <option value="">Selecionar conta...</option>{contas.map(c=><option key={c.id} value={c.id}>{c.nome} — {c.banco}</option>)}
+    </select>
+  );
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+        <h2 style={{fontSize:18,fontWeight:700,color:"#0f172a",margin:0}}>Contas Bancarias</h2>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Conta</button>
+      </div>
+      {loading?<Spin/>:(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:16}}>
+          {contas.map(c=>(
+            <div key={c.id} style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+              <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",padding:"18px 22px"}}>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",letterSpacing:2,textTransform:"uppercase",marginBottom:4}}>{c.tipo}</div>
+                <div style={{fontSize:17,fontWeight:700,color:"#fff"}}>{c.nome}</div>
+                <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginTop:2}}>{c.banco}</div>
+              </div>
+              <div style={{padding:"16px 22px"}}>
+                <div style={{fontSize:11,color:"#94a3b8",letterSpacing:1.5,textTransform:"uppercase",marginBottom:4}}>Saldo Inicial</div>
+                <div style={{fontSize:20,fontWeight:700,color:"#0284C7"}}>{fmt(c.saldo_inicial)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {modal&&(<Modal title="Nova Conta Bancaria" sub="Financeiro">
+        <FI label="Nome da Conta" value={form.nome} onChange={e=>setForm({...form,nome:e.target.value})} placeholder="Ex: Nubank PJ" required/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Banco" value={form.banco} onChange={e=>setForm({...form,banco:e.target.value})} placeholder="Ex: Nubank"/>
+          <FS label="Tipo" value={form.tipo} onChange={e=>setForm({...form,tipo:e.target.value})} options={TIPOS}/>
+        </div>
+        <FI label="Saldo Inicial (R$)" value={form.saldo_inicial} onChange={e=>setForm({...form,saldo_inicial:e.target.value})} type="number" placeholder="0,00"/>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+          <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":"Cadastrar"}</BtnPrimary>
+        </div>
+      </Modal>)}
+    </div>
+  );
+}
+
+// ─── CONTAS A RECEBER ─────────────────────────────────────────────
+function ModuloContasReceber() {
+  const [contas,setContas]=useState([]);
+  const [contasBanc,setContasBanc]=useState([]);
+  const [centros,setCentros]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [salvando,setSalvando]=useState(false);
+  const [filtroStatus,setFiltroStatus]=useState("Todos");
+  const vazio={descricao:"",cliente:"",pedido_ref:"",valor:"",vencimento:"",forma_pagamento:"",conta_bancaria_id:"",centro_custo_id:"",observacoes:""};
+  const [form,setForm]=useState(vazio);
+  const STATUS_CR={"Pendente":{bg:"#FFF7ED",text:"#C2410C",dot:"#F97316"},"Parcial":{bg:"#EFF6FF",text:"#1D4ED8",dot:"#3B82F6"},"Pago":{bg:"#F0FDF4",text:"#15803D",dot:"#22C55E"},"Vencido":{bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"},"Cancelado":{bg:"#F8FAFC",text:"#475569",dot:"#94A3B8"}};
+
+  const load=async()=>{
+    setLoading(true);
+    const [c,cb,cc]=await Promise.all([
+      db.get("contas_receber","&deleted_at=is.null&order=vencimento.asc"),
+      db.get("contas_bancarias","&ativa=eq.true"),
+      db.get("centros_custo","&ativo=eq.true")
+    ]);
+    // Marcar vencidos automaticamente
+    const hoje2=hoje();
+    const atualizados=(Array.isArray(c)?c:[]).map(x=>({...x,status:x.status==="Pendente"&&x.vencimento<hoje2?"Vencido":x.status}));
+    setContas(atualizados);setContasBanc(Array.isArray(cb)?cb:[]);setCentros(Array.isArray(cc)?cc:[]);setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+
+  const lista=contas.filter(c=>filtroStatus==="Todos"||c.status===filtroStatus);
+  const totalPendente=contas.filter(c=>["Pendente","Vencido","Parcial"].includes(c.status)).reduce((s,c)=>s+Number(c.valor),0);
+  const totalRecebido=contas.filter(c=>c.status==="Pago").reduce((s,c)=>s+Number(c.valor),0);
+  const totalVencido=contas.filter(c=>c.status==="Vencido").reduce((s,c)=>s+Number(c.valor),0);
+
+  const salvar=async()=>{if(!form.descricao||!form.valor||!form.vencimento)return;setSalvando(true);await db.insert("contas_receber",{...form,valor:Number(form.valor),status:"Pendente"});setForm(vazio);setModal(false);setSalvando(false);load();};
+
+  const baixar=async(c)=>{
+    const dataPag=prompt("Data do pagamento (AAAA-MM-DD):",hoje());
+    if(!dataPag)return;
+    await db.updateUUID("contas_receber",c.id,{status:"Pago",data_pagamento:dataPag,valor_pago:Number(c.valor)});
+    load();
+  };
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:14,marginBottom:24}}>
+        <div style={{background:"linear-gradient(135deg,#16a34a,#22c55e)",borderRadius:14,padding:"20px 22px"}}><div style={{fontSize:11,color:"rgba(255,255,255,0.7)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Total Recebido</div><div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{fmt(totalRecebido)}</div></div>
+        <Card icon="⏳" label="A Receber" value={fmt(totalPendente)} accent="#3B82F6"/>
+        <Card icon="🔴" label="Vencido" value={fmt(totalVencido)} accent="#EF4444"/>
+        <Card icon="📋" label="Lancamentos" value={contas.length}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:10}}>
+          <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}><option>Todos</option>{Object.keys(STATUS_CR).map(s=><option key={s}>{s}</option>)}</select>
+          <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        </div>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#0284C7,#38BDF8)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Conta</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:(<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+          <TH cols={["Descricao","Cliente","Valor","Vencimento","Pagamento","Status",""]}/>
+          <tbody>{lista.length===0?<tr><td colSpan={7} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhum lancamento</td></tr>:
+          lista.map(c=>{
+            const venc=c.vencimento<hoje()&&c.status!=="Pago";
+            return(<tr key={c.id} style={{borderTop:"1px solid #f1f5f9",background:venc?"#FFF7ED":"transparent"}} onMouseEnter={e=>e.currentTarget.style.opacity="0.85"} onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+              <td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#334155",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.descricao}</td>
+              <td style={{padding:"12px 16px",fontSize:13,color:"#64748b"}}>{c.cliente||"—"}</td>
+              <td style={{padding:"12px 16px",fontSize:14,fontWeight:700,color:"#15803D"}}>{fmt(c.valor)}</td>
+              <td style={{padding:"12px 16px",fontSize:12,color:venc?"#C2410C":"#94a3b8",fontWeight:venc?700:400,whiteSpace:"nowrap"}}>{fmtD(c.vencimento)}</td>
+              <td style={{padding:"12px 16px",fontSize:12,color:"#94a3b8",whiteSpace:"nowrap"}}>{c.data_pagamento?fmtD(c.data_pagamento):"—"}</td>
+              <td style={{padding:"12px 16px"}}><Badge label={c.status} map={STATUS_CR}/></td>
+              <td style={{padding:"12px 16px"}}>
+                {["Pendente","Vencido","Parcial"].includes(c.status)&&<button onClick={()=>baixar(c)} style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:6,padding:"5px 12px",fontSize:12,color:"#15803D",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Baixar</button>}
+              </td>
+            </tr>);
+          })}</tbody>
+        </table></div>)}
+      </div>
+      {modal&&(<Modal title="Nova Conta a Receber" sub="Financeiro" maxW={540}>
+        <FI label="Descricao" value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})} placeholder="Ex: Pedido OF-0001" required/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Cliente" value={form.cliente} onChange={e=>setForm({...form,cliente:e.target.value})} placeholder="Nome do cliente"/>
+          <FI label="Ref. Pedido" value={form.pedido_ref} onChange={e=>setForm({...form,pedido_ref:e.target.value})} placeholder="Ex: OF-0001"/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Valor (R$)" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} type="number" placeholder="0,00" required/>
+          <FI label="Vencimento" value={form.vencimento} onChange={e=>setForm({...form,vencimento:e.target.value})} type="date" required/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Forma de Pagamento</label><select value={form.forma_pagamento} onChange={e=>setForm({...form,forma_pagamento:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{["Pix","Dinheiro","Cartao","Transferencia","Boleto"].map(o=><option key={o}>{o}</option>)}</select></div>
+          <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Conta Bancaria</label><select value={form.conta_bancaria_id} onChange={e=>setForm({...form,conta_bancaria_id:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{contasBanc.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+        </div>
+        <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Centro de Custo</label><select value={form.centro_custo_id} onChange={e=>setForm({...form,centro_custo_id:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{centros.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+          <BtnPrimary onClick={salvar} disabled={salvando}>{salvando?"Salvando...":"Criar"}</BtnPrimary>
+        </div>
+      </Modal>)}
+    </div>
+  );
+}
+
+// ─── CONTAS A PAGAR ───────────────────────────────────────────────
+function ModuloContasPagar() {
+  const [contas,setContas]=useState([]);
+  const [contasBanc,setContasBanc]=useState([]);
+  const [centros,setCentros]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false);
+  const [salvando,setSalvando]=useState(false);
+  const [filtroStatus,setFiltroStatus]=useState("Todos");
+  const vazio={descricao:"",fornecedor:"",categoria:"",valor:"",vencimento:"",forma_pagamento:"",conta_bancaria_id:"",centro_custo_id:"",recorrente:false,observacoes:""};
+  const [form,setForm]=useState(vazio);
+  const STATUS_CP={"Pendente":{bg:"#FFF7ED",text:"#C2410C",dot:"#F97316"},"Pago":{bg:"#F0FDF4",text:"#15803D",dot:"#22C55E"},"Vencido":{bg:"#FEF2F2",text:"#DC2626",dot:"#EF4444"},"Cancelado":{bg:"#F8FAFC",text:"#475569",dot:"#94A3B8"}};
+  const CATEGORIAS=["Fornecedor","Salario","Imposto","Energia","Aluguel","Marketing","Manutencao","Material","Logistica","Outros"];
+
+  const load=async()=>{
+    setLoading(true);
+    const [c,cb,cc]=await Promise.all([
+      db.get("contas_pagar","&deleted_at=is.null&order=vencimento.asc"),
+      db.get("contas_bancarias","&ativa=eq.true"),
+      db.get("centros_custo","&ativo=eq.true")
+    ]);
+    const hoje2=hoje();
+    const atualizados=(Array.isArray(c)?c:[]).map(x=>({...x,status:x.status==="Pendente"&&x.vencimento<hoje2?"Vencido":x.status}));
+    setContas(atualizados);setContasBanc(Array.isArray(cb)?cb:[]);setCentros(Array.isArray(cc)?cc:[]);setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+
+  const lista=contas.filter(c=>filtroStatus==="Todos"||c.status===filtroStatus);
+  const totalPendente=contas.filter(c=>["Pendente","Vencido"].includes(c.status)).reduce((s,c)=>s+Number(c.valor),0);
+  const totalPago=contas.filter(c=>c.status==="Pago").reduce((s,c)=>s+Number(c.valor),0);
+  const totalVencido=contas.filter(c=>c.status==="Vencido").reduce((s,c)=>s+Number(c.valor),0);
+
+  const salvar=async()=>{if(!form.descricao||!form.valor||!form.vencimento)return;setSalvando(true);await db.insert("contas_pagar",{...form,valor:Number(form.valor),status:"Pendente"});setForm(vazio);setModal(false);setSalvando(false);load();};
+
+  const baixar=async(c)=>{
+    const dataPag=prompt("Data do pagamento (AAAA-MM-DD):",hoje());
+    if(!dataPag)return;
+    await db.updateUUID("contas_pagar",c.id,{status:"Pago",data_pagamento:dataPag,valor_pago:Number(c.valor)});
+    load();
+  };
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:14,marginBottom:24}}>
+        <div style={{background:"linear-gradient(135deg,#DC2626,#EF4444)",borderRadius:14,padding:"20px 22px"}}><div style={{fontSize:11,color:"rgba(255,255,255,0.7)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Total Pago</div><div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{fmt(totalPago)}</div></div>
+        <Card icon="⏳" label="A Pagar" value={fmt(totalPendente)} accent="#F97316"/>
+        <Card icon="🔴" label="Vencido" value={fmt(totalVencido)} accent="#EF4444"/>
+        <Card icon="📋" label="Lancamentos" value={contas.length}/>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:10}}>
+          <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value)} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}><option>Todos</option>{Object.keys(STATUS_CP).map(s=><option key={s}>{s}</option>)}</select>
+          <button onClick={load} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>🔄</button>
+        </div>
+        <button onClick={()=>setModal(true)} style={{background:"linear-gradient(135deg,#DC2626,#EF4444)",border:"none",borderRadius:10,padding:"10px 20px",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"}}>+ Nova Conta</button>
+      </div>
+      <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {loading?<Spin/>:(<div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse"}}>
+          <TH cols={["Descricao","Fornecedor","Categoria","Valor","Vencimento","Status",""]}/>
+          <tbody>{lista.length===0?<tr><td colSpan={7} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>Nenhum lancamento</td></tr>:
+          lista.map(c=>{
+            const venc=c.vencimento<hoje()&&c.status!=="Pago";
+            return(<tr key={c.id} style={{borderTop:"1px solid #f1f5f9",background:venc?"#FEF2F2":"transparent"}}>
+              <td style={{padding:"12px 16px",fontSize:13,fontWeight:600,color:"#334155",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.descricao}</td>
+              <td style={{padding:"12px 16px",fontSize:13,color:"#64748b"}}>{c.fornecedor||"—"}</td>
+              <td style={{padding:"12px 16px",fontSize:12,color:"#64748b"}}>{c.categoria||"—"}</td>
+              <td style={{padding:"12px 16px",fontSize:14,fontWeight:700,color:"#DC2626"}}>{fmt(c.valor)}</td>
+              <td style={{padding:"12px 16px",fontSize:12,color:venc?"#DC2626":"#94a3b8",fontWeight:venc?700:400,whiteSpace:"nowrap"}}>{fmtD(c.vencimento)}</td>
+              <td style={{padding:"12px 16px"}}><Badge label={c.status} map={STATUS_CP}/></td>
+              <td style={{padding:"12px 16px"}}>
+                {["Pendente","Vencido"].includes(c.status)&&<button onClick={()=>baixar(c)} style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:6,padding:"5px 12px",fontSize:12,color:"#DC2626",cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Pagar</button>}
+              </td>
+            </tr>);
+          })}</tbody>
+        </table></div>)}
+      </div>
+      {modal&&(<Modal title="Nova Conta a Pagar" sub="Financeiro" maxW={540}>
+        <FI label="Descricao" value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})} placeholder="Ex: Aluguel Junho" required/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Fornecedor" value={form.fornecedor} onChange={e=>setForm({...form,fornecedor:e.target.value})} placeholder="Nome do fornecedor"/>
+          <FS label="Categoria" value={form.categoria} onChange={e=>setForm({...form,categoria:e.target.value})} options={["",...CATEGORIAS]}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <FI label="Valor (R$)" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} type="number" placeholder="0,00" required/>
+          <FI label="Vencimento" value={form.vencimento} onChange={e=>setForm({...form,vencimento:e.target.value})} type="date" required/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Forma de Pagamento</label><select value={form.forma_pagamento} onChange={e=>setForm({...form,forma_pagamento:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{["Pix","Dinheiro","Cartao","Transferencia","Boleto","Debito"].map(o=><option key={o}>{o}</option>)}</select></div>
+          <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Conta Bancaria</label><select value={form.conta_bancaria_id} onChange={e=>setForm({...form,conta_bancaria_id:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{contasBanc.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+        </div>
+        <div style={{marginBottom:14}}><label style={{fontSize:11,color:"#94a3b8",letterSpacing:1.2,textTransform:"uppercase",display:"block",marginBottom:5}}>Centro de Custo</label><select value={form.centro_custo_id} onChange={e=>setForm({...form,centro_custo_id:e.target.value})} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"11px 14px",fontSize:14,color:"#1e293b"}}><option value="">Selecionar...</option>{centros.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}</select></div>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <BtnSecondary onClick={()=>setModal(false)}>Cancelar</BtnSecondary>
+          <BtnPrimary onClick={salvar} disabled={salvando} style={{background:"linear-gradient(135deg,#DC2626,#EF4444)"}}>{salvando?"Salvando...":"Criar"}</BtnPrimary>
+        </div>
+      </Modal>)}
+    </div>
+  );
+}
+
+// ─── DRE / RELATORIOS ─────────────────────────────────────────────
+function ModuloDRE() {
+  const [pedidos,setPedidos]=useState([]);
+  const [pagar,setPagar]=useState([]);
+  const [receber,setReceber]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [mes,setMes]=useState(new Date().getMonth());
+  const [ano,setAno]=useState(new Date().getFullYear());
+  const meses=["Janeiro","Fevereiro","Marco","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+  useEffect(()=>{
+    Promise.all([
+      db.get("pedidos","&order=created_at.desc"),
+      db.get("contas_pagar","&deleted_at=is.null"),
+      db.get("contas_receber","&deleted_at=is.null")
+    ]).then(([p,pg,rc])=>{setPedidos(Array.isArray(p)?p:[]);setPagar(Array.isArray(pg)?pg:[]);setReceber(Array.isArray(rc)?rc:[]);setLoading(false);});
+  },[]);
+
+  const filtrarMes=(arr,campo)=>arr.filter(x=>{const d=new Date((x[campo]||x.created_at)+"T12:00:00");return d.getMonth()===mes&&d.getFullYear()===ano;});
+
+  const pedMes=filtrarMes(pedidos,"data");
+  const pgMes=filtrarMes(pagar,"vencimento").filter(x=>x.status==="Pago");
+  const rcMes=filtrarMes(receber,"vencimento").filter(x=>x.status==="Pago");
+
+  const receitaBruta=pedMes.filter(p=>["Entregue","Expedido"].includes(p.status)).reduce((s,p)=>s+Number(p.valor),0);
+  const receitaRecebida=rcMes.reduce((s,r)=>s+Number(r.valor),0);
+  const despesaTotal=pgMes.reduce((s,p)=>s+Number(p.valor),0);
+  const lucroBruto=receitaBruta-despesaTotal;
+  const margem=receitaBruta>0?(lucroBruto/receitaBruta*100).toFixed(1):0;
+
+  const porCategoria=["Fornecedor","Salario","Imposto","Energia","Aluguel","Marketing","Manutencao","Material","Logistica","Outros"].map(cat=>({
+    cat,valor:pgMes.filter(p=>p.categoria===cat).reduce((s,p)=>s+Number(p.valor),0)
+  })).filter(x=>x.valor>0).sort((a,b)=>b.valor-a.valor);
+
+  if(loading)return <Spin/>;
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,flexWrap:"wrap",gap:10}}>
+        <h2 style={{fontSize:18,fontWeight:700,color:"#0f172a",margin:0}}>DRE — Demonstrativo de Resultados</h2>
+        <div style={{display:"flex",gap:10}}>
+          <select value={mes} onChange={e=>setMes(Number(e.target.value))} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}>{meses.map((m,i)=><option key={m} value={i}>{m}</option>)}</select>
+          <select value={ano} onChange={e=>setAno(Number(e.target.value))} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:13,color:"#475569"}}>{[2024,2025,2026,2027].map(a=><option key={a}>{a}</option>)}</select>
+        </div>
+      </div>
+
+      {/* DRE Card Principal */}
+      <div style={{background:"linear-gradient(135deg,#0a1628,#0d2137)",borderRadius:20,padding:28,marginBottom:24}}>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:20}}>{meses[mes]} {ano}</div>
+        {[
+          ["(+) Receita Bruta",receitaBruta,"#38BDF8"],
+          ["(+) Valores Recebidos",receitaRecebida,"#22C55E"],
+          ["(-) Total Despesas",despesaTotal,"#EF4444"],
+        ].map(([l,v,cor])=>(
+          <div key={l} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+            <span style={{fontSize:14,color:"rgba(255,255,255,0.7)"}}>{l}</span>
+            <span style={{fontSize:16,fontWeight:700,color:cor}}>{fmt(v)}</span>
+          </div>
+        ))}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 0 0"}}>
+          <span style={{fontSize:16,fontWeight:700,color:"#fff"}}>(=) Resultado do Periodo</span>
+          <span style={{fontSize:22,fontWeight:700,color:lucroBruto>=0?"#22C55E":"#EF4444"}}>{fmt(lucroBruto)}</span>
+        </div>
+        <div style={{marginTop:8,fontSize:13,color:"rgba(255,255,255,0.4)"}}>Margem: {margem}%</div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+        {/* KPIs */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+          <Card icon="📦" label="Pedidos no Mes" value={pedMes.length}/>
+          <Card icon="💰" label="Ticket Medio" value={fmt(pedMes.length>0?pedMes.reduce((s,p)=>s+Number(p.valor),0)/pedMes.length:0)}/>
+          <Card icon="✅" label="Contas Recebidas" value={rcMes.length} accent="#22C55E"/>
+          <Card icon="💳" label="Contas Pagas" value={pgMes.length} accent="#EF4444"/>
+        </div>
+        {/* Despesas por categoria */}
+        <div style={{background:"#fff",borderRadius:16,border:"1px solid #e2e8f0",padding:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#0f172a",marginBottom:16}}>Despesas por Categoria</div>
+          {porCategoria.length===0?<div style={{color:"#94a3b8",fontSize:13}}>Sem despesas pagas no periodo</div>:
+          porCategoria.map((c,i)=>{const pct=despesaTotal>0?(c.valor/despesaTotal*100).toFixed(1):0;const cores=["#EF4444","#F97316","#F59E0B","#22C55E","#3B82F6","#8B5CF6","#EC4899","#64748b"];return(
+            <div key={c.cat} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,color:"#334155",fontWeight:600}}>{c.cat}</span><span style={{fontSize:12,fontWeight:700,color:"#0f172a"}}>{fmt(c.valor)}</span></div>
+              <div style={{background:"#f1f5f9",borderRadius:4,height:5}}><div style={{width:pct+"%",height:"100%",background:cores[i%8],borderRadius:4}}/></div>
+              <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{pct}%</div>
+            </div>
+          );})}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── CALCULADORA (INALTERADA) ─────────────────────────────────────
 const FILS={PLA:{fator:0.140},PETG:{fator:0.125},TPU:{fator:0.160}};
 const FV={varejo:3,atacado:2.2};
@@ -991,8 +1336,11 @@ export default function App() {
     {id:"dashboard",label:"Dashboard",icon:"📊",admin:true},
     {id:"clientes",label:"Clientes",icon:"👥",admin:true},
     {id:"pedidos",label:"Pedidos",icon:"📋"},
-    {id:"financeiro",label:"Financeiro",icon:"💰",admin:true},
+    {id:"receber",label:"A Receber",icon:"📥",admin:true},
+    {id:"pagar",label:"A Pagar",icon:"📤",admin:true},
+    {id:"dre",label:"DRE",icon:"📈",admin:true},
     {id:"fluxo",label:"Fluxo de Caixa",icon:"💳",admin:true},
+    {id:"contas",label:"Contas Bancarias",icon:"🏦",admin:true},
     {id:"estoque",label:"Estoque",icon:"📦",admin:true},
     {id:"producao",label:"Producao",icon:"🏭",admin:true},
     {id:"impressoras",label:"Impressoras",icon:"🖨️",admin:true},
@@ -1035,8 +1383,11 @@ export default function App() {
         {aba==="dashboard"&&<ModuloDashboard setAba={setAba}/>}
         {aba==="clientes"&&<ModuloClientes/>}
         {aba==="pedidos"&&<ModuloPedidos logado={logado}/>}
-        {aba==="financeiro"&&<ModuloFinanceiro/>}
+        {aba==="receber"&&<ModuloContasReceber/>}
+        {aba==="pagar"&&<ModuloContasPagar/>}
+        {aba==="dre"&&<ModuloDRE/>}
         {aba==="fluxo"&&<ModuloFluxo/>}
+        {aba==="contas"&&<ModuloContasBancarias/>}
         {aba==="estoque"&&<ModuloEstoque/>}
         {aba==="producao"&&<ModuloProducao/>}
         {aba==="impressoras"&&<ModuloImpressoras/>}
